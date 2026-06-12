@@ -1,7 +1,7 @@
 # Zoom Clone V2 — Replicate the Real Zoom Workplace Web App
 
 > **Source of truth:** live walkthrough of the logged-in Zoom Workplace web app (app.zoom.us, June 2026),
-> captured in `zoom-ref/*.png`. Every spec below cites what was actually observed.
+> captured in `docs/zoom-ref/*.png`. Every spec below cites what was actually observed.
 > **Goal:** V1 satisfied F1–F4 functionally; V2 makes the app *look and flow* like the real
 > Zoom web app — same shell, same screens, same copy — while keeping V1's backend/WebRTC core.
 > **Status: PLAN ONLY — nothing here is implemented until you approve it.**
@@ -35,7 +35,7 @@ meetings (checkbox disabled), invitee emails, Upgrade-to-Pro flow, Search functi
 
 ---
 
-## 2. V2 screen specs (from `zoom-ref/` captures)
+## 2. V2 screen specs (from `docs/zoom-ref/` captures)
 
 ### 2.1 App shell (every page)
 
@@ -43,7 +43,7 @@ meetings (checkbox disabled), invitee emails, Upgrade-to-Pro flow, Search functi
 - **Left sidebar (white, w≈84px, icon over 11px label):** Home, Meetings, Chat (placeholder pane "Chat is coming soon" or hidden roster), **More** (popover listing Docs/Whiteboards/Notes — non-functional), gear **Settings** pinned bottom. Active tab = light-gray rounded square highlight.
 - Content area has a subtle 1px border / rounded top-left like the PWA frame.
 
-### 2.2 Home tab (`zoom-ref/more-menu.png` = canonical)
+### 2.2 Home tab (`docs/zoom-ref/more-menu.png` = canonical)
 
 - Centered **clock** (~48px semibold) + "Friday, June 12" below.
 - Three centered actions (~64px rounded-2xl squares, label *below*):
@@ -54,16 +54,16 @@ meetings (checkbox disabled), invitee emails, Upgrade-to-Pro flow, Search functi
 - **Agenda card:** header "Today, Jun {d} ˅" + pop-out icon; toolbar `[📅 Today] ‹ ›` + "…"; body = meetings for the selected day (time, title, Start button on hover) or the **empty state**: umbrella illustration + "No meetings scheduled."
 → satisfies "Upcoming meetings section" (F1). **Recent** lives in Meetings→Previous (2.3) + History icon opens a small "Recent meetings" dropdown — keeps the requirement while staying Zoom-faithful.
 
-### 2.3 Meetings tab (`zoom-ref/meetings-tab2.png`)
+### 2.3 Meetings tab (`docs/zoom-ref/meetings-tab2.png`)
 
 - **Left pane (w≈360px):** refresh icon; segmented tabs **Upcoming / Previous** (Previous = our recent list — Zoom shows Upcoming only for free accounts, we add Previous to satisfy F1-recent); pinned **PMI card** (blue when selected: big formatted code + "My Personal Meeting ID (PMI)"); list items: date group headers, title + time; "No upcoming meetings" centered when empty; bottom link "Add a calendar" (stub).
 - **Right detail pane:** H1 = meeting title ("My Personal Meeting ID (PMI)" for PMI), code line, buttons: **Start** (blue, or **Edit/Delete** for scheduled), **Copy Invitation** (copies block), **Edit**; link "Show Meeting Invitation" → expandable invitation text block (`Join Zoom Meeting\n{link}\nMeeting ID: … Passcode: …`).
 
-### 2.4 Join page (`zoom-ref/join-page.png`)
+### 2.4 Join page (`docs/zoom-ref/join-page.png`)
 
 - In-shell, content centered-left: H1 **"Join Meeting"**, one rounded input "Meeting ID or Personal Link Name" (accepts `abc-defg-hjk`, PMI digits, or pasted link), buttons right-aligned: Cancel (→ Home) + **Join** (disabled until non-empty). Errors inline below input ("Meeting not found", "has ended").
 
-### 2.5 Schedule page (`zoom-ref/schedule-form-full.png`, simplified to relevant rows)
+### 2.5 Schedule page (`docs/zoom-ref/schedule-form-full.png`, simplified to relevant rows)
 
 Full-page form ("Schedule Meeting" H1, labeled rows, Save/Cancel after Meeting ID section):
 
@@ -76,13 +76,13 @@ Full-page form ("Schedule Meeting" H1, labeled rows, Save/Cancel after Meeting I
 - **Video**: Host on/off, Participant on/off radios (sets initial camera state in room).
 - **Save** → Meetings tab with the new meeting selected (detail pane), like Zoom's redirect.
 
-### 2.6 Pre-join + guest name (`zoom-ref/room-prejoin.png`)
+### 2.6 Pre-join + guest name (`docs/zoom-ref/room-prejoin.png`)
 
 - Route `/meeting/{code}` renders the **dark stage immediately** with name label bottom-left; centered **white card**: illustration, "**Do you want people to see you in the meeting?**", subtitle "You can still turn off your microphone and camera anytime in the meeting", blue **[📹 Use microphone and camera]**, link "Continue without microphone and camera". (Single combined step — Zoom's second "hear you" card is a browser-permission artifact we don't need.)
 - **Guests** (no session): before the permission card, Zoom-style name screen: "Enter your name to join", input, ☐ Remember my name, **Join** button.
 - Passcode-protected links missing `?pwd=` → passcode entry screen.
 
-### 2.7 Meeting room (`zoom-ref/room-ingame.png`, `room-controlbar` a11y tree, `room-info.png`, `room-end-dialog.png`)
+### 2.7 Meeting room (`docs/zoom-ref/room-ingame.png`, `room-controlbar` a11y tree, `room-info.png`, `room-end-dialog.png`)
 
 - **Stage:** near-black `#1A1A1A` center, darker `#0F0F0F` gutters; video-off participant = centered **square tile** (~96px, generated solid color, white initial); with video = our existing tile grid; name label chip bottom-left of stage/tile with red mic-slash icon when muted; top-center **toast** "Please enable access to your microphone and camera … ×" when devices skipped.
 - **Top of stage:** left = green **shield** → **Meeting info popover**: rows Meeting ID / Host / Passcode / Invite Link (+ blue **Copy Link**) / Encryption "Enabled"; right = "View" button (Gallery/Speaker toggle — stretch, default Gallery).

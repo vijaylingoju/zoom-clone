@@ -1,3 +1,5 @@
+# Local tool artifacts
 .playwright-mcp/
-dashboard.png
-*.png
+
+# Zoom reference captures — contain personal PMI/passcode, never commit
+docs/zoom-ref/
