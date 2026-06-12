@@ -1,6 +1,8 @@
 """Idempotent seed: default user (assignment: 'assume a default user is logged in')
-plus sample upcoming and recent meetings so the dashboard is never empty."""
+with a Personal Meeting ID room, plus sample upcoming and recent meetings so the
+dashboard is never empty."""
 
+import secrets
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -13,14 +15,41 @@ from app.services.code_generator import generate_meeting_code
 DEFAULT_USER_EMAIL = "vijay@example.com"
 
 
+def _generate_pmi() -> str:
+    return str(secrets.choice("123456789")) + "".join(
+        str(secrets.choice("0123456789")) for _ in range(9)
+    )
+
+
+def _random_passcode() -> str:
+    return "".join(secrets.choice("abcdefghjkmnpqrstuvwxyz23456789") for _ in range(6))
+
+
 async def seed(db: AsyncSession) -> None:
     existing = await db.scalar(select(User).where(User.email == DEFAULT_USER_EMAIL))
     if existing:
         return
 
-    user = User(email=DEFAULT_USER_EMAIL, name="Vijay Lingoju", is_guest=False)
+    user = User(
+        email=DEFAULT_USER_EMAIL,
+        name="Vijay Lingoju",
+        is_guest=False,
+        pmi_code=_generate_pmi(),
+    )
     db.add(user)
     await db.flush()
+
+    pmi_meeting = Meeting(
+        meeting_code=user.pmi_code,
+        host_id=user.id,
+        title=f"{user.name}'s Personal Meeting Room",
+        meeting_type=MeetingType.INSTANT,
+        status=MeetingStatus.SCHEDULED,
+        is_pmi=True,
+    )
+    db.add(pmi_meeting)
+    await db.flush()
+    db.add(MeetingSettings(meeting_id=pmi_meeting.id))
 
     now = utcnow()
     upcoming = [
@@ -38,6 +67,8 @@ async def seed(db: AsyncSession) -> None:
             status=MeetingStatus.SCHEDULED,
             scheduled_start=start,
             duration_minutes=duration,
+            passcode=_random_passcode(),
+            timezone="UTC",
         )
         db.add(meeting)
         await db.flush()

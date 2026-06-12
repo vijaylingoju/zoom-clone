@@ -10,6 +10,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface ControlButtonProps {
   label: string;
@@ -40,12 +41,14 @@ interface ControlBarProps {
   mediaAvailable: boolean;
   participantCount: number;
   sharing: boolean;
+  isHost: boolean;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onToggleRoster: () => void;
   onToggleChat: () => void;
   onToggleShare: () => void;
   onLeave: () => void;
+  onEndForAll: () => void;
 }
 
 export function ControlBar({
@@ -54,13 +57,28 @@ export function ControlBar({
   mediaAvailable,
   participantCount,
   sharing,
+  isHost,
   onToggleAudio,
   onToggleVideo,
   onToggleRoster,
   onToggleChat,
   onToggleShare,
   onLeave,
+  onEndForAll,
 }: ControlBarProps) {
+  const [endMenuOpen, setEndMenuOpen] = useState(false);
+  const endMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(event: MouseEvent) {
+      if (endMenuRef.current && !endMenuRef.current.contains(event.target as Node)) {
+        setEndMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   return (
     <div className="flex items-center justify-between bg-room-bg px-4 py-2">
       <div className="flex items-center gap-2">
@@ -110,14 +128,54 @@ export function ControlBar({
           <span className="text-[11px]">{sharing ? "Stop Share" : "Share"}</span>
         </button>
       </div>
-      <button
-        type="button"
-        onClick={onLeave}
-        className="flex items-center gap-2 rounded-lg bg-[#E02828] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#c52222]"
-      >
-        <Phone size={16} className="rotate-[135deg]" />
-        Leave
-      </button>
+
+      <div className="relative" ref={endMenuRef}>
+        {isHost ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setEndMenuOpen((open) => !open)}
+              className="rounded-lg bg-[#E02828] px-6 py-2 text-sm font-medium text-white transition hover:bg-[#c52222]"
+            >
+              End
+            </button>
+            {endMenuOpen && (
+              <div className="absolute bottom-12 right-0 z-30 w-56 rounded-xl border border-white/10 bg-[#111] p-2 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={onEndForAll}
+                  className="block w-full rounded-lg bg-[#E02828] px-3 py-2 text-center text-sm font-medium text-white hover:bg-[#c52222]"
+                >
+                  End Meeting for All
+                </button>
+                <button
+                  type="button"
+                  onClick={onLeave}
+                  className="mt-1.5 block w-full rounded-lg border border-white/15 px-3 py-2 text-center text-sm text-white hover:bg-white/10"
+                >
+                  Leave Meeting
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEndMenuOpen(false)}
+                  className="mt-1.5 block w-full rounded-lg px-3 py-2 text-center text-sm text-white/60 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onLeave}
+            className="flex items-center gap-2 rounded-lg bg-[#E02828] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#c52222]"
+          >
+            <Phone size={16} className="rotate-[135deg]" />
+            Leave
+          </button>
+        )}
+      </div>
     </div>
   );
 }

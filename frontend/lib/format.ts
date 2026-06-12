@@ -29,9 +29,14 @@ export function formatMeetingWindow(startIso: string, durationMinutes: number | 
   return parts.join(" ");
 }
 
-/** Accepts a raw meeting code or a full invite link and returns the code. */
+/** Accepts a raw meeting code, PMI digits (with spaces), or a full invite link. */
 export function parseMeetingCode(input: string): string {
   const trimmed = input.trim();
-  const match = trimmed.match(/\/meeting\/([a-z2-9-]+)/i);
-  return (match ? match[1] : trimmed).toLowerCase();
+  const match = trimmed.match(/\/meeting\/([a-z0-9-]+)/i);
+  return (match ? match[1] : trimmed).replace(/\s+/g, "").toLowerCase();
+}
+
+/** "4347606497" → "434 760 6497" like Zoom displays PMIs. */
+export function formatPmi(pmi: string): string {
+  return pmi.length === 10 ? `${pmi.slice(0, 3)} ${pmi.slice(3, 6)} ${pmi.slice(6)}` : pmi;
 }

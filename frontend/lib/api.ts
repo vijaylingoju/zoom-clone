@@ -51,20 +51,39 @@ export const api = {
   upcomingMeetings: () => request<Meeting[]>("/meetings/upcoming"),
   recentMeetings: () => request<Meeting[]>("/meetings/recent"),
   validateMeeting: (code: string) => request<Meeting>(`/meetings/${code}`),
-  createInstantMeeting: () =>
+  createInstantMeeting: (usePmi = false) =>
     request<MeetingCreated>("/meetings", {
       method: "POST",
-      body: JSON.stringify({ meeting_type: "instant" }),
+      body: JSON.stringify({ meeting_type: "instant", use_pmi: usePmi }),
+    }),
+  startMeeting: (code: string, hostKey: string) =>
+    request<MeetingCreated>(`/meetings/${code}/start`, {
+      method: "POST",
+      body: JSON.stringify({ host_key: hostKey }),
+    }),
+  deleteMeeting: (code: string, hostKey: string) =>
+    request<void>(`/meetings/${code}`, {
+      method: "DELETE",
+      body: JSON.stringify({ host_key: hostKey }),
     }),
   scheduleMeeting: (input: ScheduleMeetingInput) =>
     request<MeetingCreated>("/meetings", {
       method: "POST",
       body: JSON.stringify({ ...input, meeting_type: "scheduled" }),
     }),
-  joinMeeting: (code: string, displayName: string, hostKey?: string | null) =>
+  joinMeeting: (
+    code: string,
+    displayName: string,
+    hostKey?: string | null,
+    passcode?: string | null,
+  ) =>
     request<JoinResponse>(`/meetings/${code}/join`, {
       method: "POST",
-      body: JSON.stringify({ display_name: displayName, host_key: hostKey ?? null }),
+      body: JSON.stringify({
+        display_name: displayName,
+        host_key: hostKey ?? null,
+        passcode: passcode ?? null,
+      }),
     }),
   chatHistory: (code: string) => request<ChatMessage[]>(`/meetings/${code}/chat`),
   leaveMeeting: (code: string, participantId: string) =>

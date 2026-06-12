@@ -40,6 +40,12 @@ function toRemotePeer(entry: RosterEntry): RemotePeer {
   };
 }
 
+export interface RoomEventHandlers {
+  onForceMute?: () => void;
+  onRemoved?: () => void;
+  onMeetingEnded?: () => void;
+}
+
 /**
  * Observer seam (PLAN §2.2): signaling events + PeerManager callbacks flow in,
  * plain serializable React state flows out. Components never see WebRTC objects.
@@ -48,7 +54,11 @@ export function useMeetingConnection(
   code: string,
   participant: Participant | null,
   localStream: MediaStream | null,
+  handlers: RoomEventHandlers = {},
 ) {
+  // ref so changing handlers never tears down the connection
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
   const [peers, setPeers] = useState<Record<string, RemotePeer>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const signalingRef = useRef<SignalingClient | null>(null);
@@ -128,6 +138,15 @@ export function useMeetingConnection(
           );
           break;
         }
+        case "force-mute":
+          handlersRef.current.onForceMute?.();
+          break;
+        case "removed":
+          handlersRef.current.onRemoved?.();
+          break;
+        case "meeting-ended":
+          handlersRef.current.onMeetingEnded?.();
+          break;
         case "media-state": {
           if (!message.from) break;
           const { audio, video } = message.payload as { audio: boolean; video: boolean };
@@ -174,11 +193,29 @@ export function useMeetingConnection(
     await peerManagerRef.current?.setVideoOverride(track);
   }, []);
 
+  const muteAll = useCallback(() => {
+    signalingRef.current?.send({ type: "host-mute-all" });
+  }, []);
+
+  const removeParticipant = useCallback((participantId: string) => {
+    signalingRef.current?.send({
+      type: "host-remove",
+      payload: { participant_id: participantId },
+    });
+  }, []);
+
+  const endMeetingForAll = useCallback(() => {
+    signalingRef.current?.send({ type: "end-meeting" });
+  }, []);
+
   return {
     peers: Object.values(peers),
     chatMessages,
     sendMediaState,
     sendChat,
     setVideoOverride,
+    muteAll,
+    removeParticipant,
+    endMeetingForAll,
   };
 }

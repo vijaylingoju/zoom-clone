@@ -27,6 +27,9 @@ class MeetingService:
         self.repo = MeetingRepository(db)
 
     async def create_meeting(self, host: User, payload: MeetingCreate) -> Meeting:
+        if payload.use_pmi:
+            return await self._start_pmi(host)
+
         is_instant = payload.meeting_type == MeetingType.INSTANT
         scheduled_start = payload.scheduled_start
         if scheduled_start is not None and scheduled_start.tzinfo is not None:
@@ -41,13 +44,60 @@ class MeetingService:
             scheduled_start=None if is_instant else scheduled_start,
             duration_minutes=None if is_instant else payload.duration_minutes,
             started_at=utcnow() if is_instant else None,
+            passcode=payload.passcode,
+            timezone=payload.timezone,
         )
         self.db.add(meeting)
         await self.db.flush()
-        self.db.add(MeetingSettings(meeting_id=meeting.id))
+        self.db.add(
+            MeetingSettings(
+                meeting_id=meeting.id,
+                host_video_on=payload.host_video_on,
+                participant_video_on=payload.participant_video_on,
+            )
+        )
         await self.db.commit()
         await self.db.refresh(meeting)
         return meeting
+
+    async def _start_pmi(self, host: User) -> Meeting:
+        """The PMI room is one persistent, restartable meeting row."""
+        if not host.pmi_code:
+            raise HTTPException(status_code=400, detail="User has no Personal Meeting ID")
+        meeting = await self.repo.get_by_code(host.pmi_code)
+        if meeting is None:
+            raise HTTPException(status_code=500, detail="PMI meeting missing — reseed")
+        meeting.status = MeetingStatus.ACTIVE
+        meeting.started_at = utcnow()
+        meeting.ended_at = None
+        await self.db.commit()
+        await self.db.refresh(meeting)
+        return meeting
+
+    async def start(self, code: str, host_key: str) -> Meeting:
+        """Host (re)starts a scheduled or ended meeting from the Meetings tab."""
+        meeting = await self.get_by_code_or_404(code)
+        if host_key != meeting.host_key:
+            raise HTTPException(status_code=403, detail="Only the host can start this meeting")
+        if meeting.status == MeetingStatus.CANCELLED:
+            raise HTTPException(status_code=410, detail="Meeting has been cancelled")
+        meeting.status = MeetingStatus.ACTIVE
+        if meeting.started_at is None or meeting.ended_at is not None:
+            meeting.started_at = utcnow()
+        meeting.ended_at = None
+        await self.db.commit()
+        await self.db.refresh(meeting)
+        return meeting
+
+    async def cancel(self, code: str, host_key: str) -> None:
+        meeting = await self.get_by_code_or_404(code)
+        if host_key != meeting.host_key:
+            raise HTTPException(status_code=403, detail="Only the host can delete this meeting")
+        if meeting.is_pmi:
+            raise HTTPException(status_code=400, detail="The PMI room cannot be deleted")
+        meeting.status = MeetingStatus.CANCELLED
+        meeting.deleted_at = utcnow()
+        await self.db.commit()
 
     async def get_by_code_or_404(self, code: str) -> Meeting:
         meeting = await self.repo.get_by_code(code)
@@ -61,10 +111,21 @@ class MeetingService:
         display_name: str,
         user: User | None,
         host_key: str | None = None,
+        passcode: str | None = None,
     ) -> MeetingParticipant:
         meeting = await self.get_by_code_or_404(code)
+        is_host_key = host_key is not None and host_key == meeting.host_key
+
+        if meeting.status == MeetingStatus.ENDED and meeting.is_pmi:
+            # the PMI room is always restartable (PLAN-V2 §3)
+            meeting.ended_at = None
+            meeting.status = MeetingStatus.SCHEDULED
         if meeting.status in (MeetingStatus.ENDED, MeetingStatus.CANCELLED):
             raise HTTPException(status_code=410, detail=f"Meeting has {meeting.status.value}")
+
+        # hosts bypass the passcode, like Zoom
+        if meeting.passcode and not is_host_key and passcode != meeting.passcode:
+            raise HTTPException(status_code=403, detail="Passcode required")
 
         if meeting.status == MeetingStatus.SCHEDULED:
             meeting.status = MeetingStatus.ACTIVE
@@ -72,12 +133,11 @@ class MeetingService:
 
         # Host role requires the creator's secret, not just the shared default
         # user — otherwise every browser would join as host (no real auth yet)
-        is_host = host_key is not None and host_key == meeting.host_key
         participant = MeetingParticipant(
             meeting_id=meeting.id,
             user_id=user.id if user else None,
             display_name=display_name.strip(),
-            role=ParticipantRole.HOST if is_host else ParticipantRole.PARTICIPANT,
+            role=ParticipantRole.HOST if is_host_key else ParticipantRole.PARTICIPANT,
             is_muted=meeting.settings.mute_on_entry if meeting.settings else False,
         )
         self.db.add(participant)

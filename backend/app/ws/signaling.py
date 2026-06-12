@@ -3,8 +3,8 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
 
-from app.core.db import SessionLocal
-from app.models import MeetingParticipant
+from app.core.db import SessionLocal, utcnow
+from app.models import MeetingParticipant, MeetingStatus
 from app.repositories.meeting_repo import MeetingRepository
 from app.schemas.meeting import ChatSendRequest
 from app.services.meeting_service import MeetingService
@@ -115,6 +115,10 @@ async def _handle(code: str, sender_id: str, message: dict[str, Any]) -> None:
         )
         return
 
+    if msg_type in ("host-mute-all", "host-remove", "end-meeting"):
+        await _handle_host_command(code, sender_id, msg_type, payload)
+        return
+
     if msg_type == "chat" and isinstance(payload, dict):
         try:
             request = ChatSendRequest(content=str(payload.get("content", "")))
@@ -129,3 +133,42 @@ async def _handle(code: str, sender_id: str, message: dict[str, Any]) -> None:
             await room_manager.broadcast(code, {"type": "chat", "payload": saved})
         return
     # unknown message types are ignored on purpose (forward compatibility)
+
+
+async def _is_host(participant_id: str) -> bool:
+    """Authorization happens server-side against the DB — never trust the client."""
+    async with SessionLocal() as db:
+        participant = await db.get(MeetingParticipant, participant_id)
+        return participant is not None and participant.role.value == "host"
+
+
+async def _handle_host_command(
+    code: str, sender_id: str, msg_type: str, payload: Any
+) -> None:
+    if not await _is_host(sender_id):
+        return
+
+    if msg_type == "host-mute-all":
+        await room_manager.broadcast(
+            code, {"type": "force-mute", "from": sender_id}, exclude=sender_id
+        )
+        return
+
+    if msg_type == "host-remove" and isinstance(payload, dict):
+        target = payload.get("participant_id")
+        if not isinstance(target, str) or target == sender_id:
+            return
+        await room_manager.send_to(code, target, {"type": "removed", "from": sender_id})
+        # the target's client closes its socket, which triggers the normal
+        # disconnect path (mark left + participant-left broadcast)
+        return
+
+    if msg_type == "end-meeting":
+        async with SessionLocal() as db:
+            service = MeetingService(db)
+            meeting = await service.repo.get_by_code(code)
+            if meeting and meeting.status == MeetingStatus.ACTIVE:
+                meeting.status = MeetingStatus.ENDED
+                meeting.ended_at = utcnow()
+                await db.commit()
+        await room_manager.broadcast(code, {"type": "meeting-ended", "from": sender_id})

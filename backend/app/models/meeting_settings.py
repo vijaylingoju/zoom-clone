@@ -14,6 +14,8 @@ class MeetingSettings(Base):
     allow_chat: Mapped[bool] = mapped_column(default=True)
     allow_screen_share: Mapped[bool] = mapped_column(default=True)
     waiting_room: Mapped[bool] = mapped_column(default=False)
+    host_video_on: Mapped[bool] = mapped_column(default=True)
+    participant_video_on: Mapped[bool] = mapped_column(default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

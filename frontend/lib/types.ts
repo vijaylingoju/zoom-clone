@@ -8,6 +8,7 @@ export interface User {
   name: string;
   avatar_url: string | null;
   is_guest: boolean;
+  pmi_code: string | null;
 }
 
 export interface Meeting {
@@ -19,12 +20,17 @@ export interface Meeting {
   status: MeetingStatus;
   host_id: string;
   host_name: string;
+  is_pmi: boolean;
+  has_passcode: boolean;
+  timezone: string | null;
   scheduled_start: string | null;
   duration_minutes: number | null;
   started_at: string | null;
   ended_at: string | null;
   created_at: string;
   join_url: string;
+  /** Present only on owner-facing responses (lists, join, create). */
+  passcode?: string | null;
 }
 
 export interface Participant {
@@ -58,4 +64,9 @@ export interface ScheduleMeetingInput {
   description?: string;
   scheduled_start: string;
   duration_minutes: number;
+  use_pmi?: boolean;
+  passcode?: string | null;
+  timezone?: string;
+  host_video_on?: boolean;
+  participant_video_on?: boolean;
 }

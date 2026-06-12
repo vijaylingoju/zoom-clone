@@ -9,3 +9,4 @@ class UserOut(BaseModel):
     name: str
     avatar_url: str | None
     is_guest: bool
+    pmi_code: str | None

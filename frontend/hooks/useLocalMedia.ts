@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type MediaPermission = "pending" | "granted" | "denied" | "unavailable";
+export type MediaPermission = "pending" | "granted" | "denied" | "unavailable" | "skipped";
 
 export interface LocalMedia {
   stream: MediaStream | null;
@@ -10,15 +10,18 @@ export interface LocalMedia {
   audioEnabled: boolean;
   videoEnabled: boolean;
   hasVideoTrack: boolean;
+  /** Ask for devices (Zoom's "Use microphone and camera"). */
+  acquire: () => Promise<void>;
+  /** Join without devices (Zoom's "Continue without microphone and camera"). */
+  skip: () => void;
   toggleAudio: () => void;
   toggleVideo: () => void;
   stop: () => void;
 }
 
 /**
- * Owns the local getUserMedia stream for lobby + room. Falls back to
- * audio-only when no camera exists; "unavailable" still allows joining
- * (a participant can attend without devices).
+ * Owns the local getUserMedia stream. Acquisition is explicit (the pre-join
+ * permission card decides), with video+audio → video → audio fallbacks.
  */
 export function useLocalMedia(): LocalMedia {
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -27,42 +30,38 @@ export function useLocalMedia(): LocalMedia {
   const [videoEnabled, setVideoEnabled] = useState(true);
   const streamRef = useRef<MediaStream | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function acquire() {
-      const attempts: MediaStreamConstraints[] = [
-        { video: true, audio: true },
-        { video: true, audio: false },
-        { video: false, audio: true },
-      ];
-      for (const constraints of attempts) {
-        try {
-          const media = await navigator.mediaDevices.getUserMedia(constraints);
-          if (cancelled) {
-            media.getTracks().forEach((track) => track.stop());
-            return;
-          }
-          streamRef.current = media;
-          setStream(media);
-          setPermission("granted");
-          setVideoEnabled(media.getVideoTracks().length > 0);
-          setAudioEnabled(media.getAudioTracks().length > 0);
+  const acquire = useCallback(async () => {
+    const attempts: MediaStreamConstraints[] = [
+      { video: true, audio: true },
+      { video: true, audio: false },
+      { video: false, audio: true },
+    ];
+    for (const constraints of attempts) {
+      try {
+        const media = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = media;
+        setStream(media);
+        setPermission("granted");
+        setVideoEnabled(media.getVideoTracks().length > 0);
+        setAudioEnabled(media.getAudioTracks().length > 0);
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "NotAllowedError") {
+          setPermission("denied");
           return;
-        } catch (err) {
-          if (err instanceof DOMException && err.name === "NotAllowedError") {
-            if (!cancelled) setPermission("denied");
-            return;
-          }
-          // NotFoundError etc. — try the next constraint set
         }
+        // NotFoundError etc. — try the next constraint set
       }
-      if (!cancelled) setPermission("unavailable");
     }
+    setPermission("unavailable");
+  }, []);
 
-    acquire();
+  const skip = useCallback(() => {
+    setPermission("skipped");
+  }, []);
+
+  useEffect(() => {
     return () => {
-      cancelled = true;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     };
@@ -101,6 +100,8 @@ export function useLocalMedia(): LocalMedia {
     audioEnabled,
     videoEnabled,
     hasVideoTrack: (stream?.getVideoTracks().length ?? 0) > 0,
+    acquire,
+    skip,
     toggleAudio,
     toggleVideo,
     stop,

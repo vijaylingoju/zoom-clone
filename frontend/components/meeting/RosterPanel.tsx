@@ -15,6 +15,9 @@ interface RosterEntry {
 interface RosterPanelProps {
   entries: RosterEntry[];
   inviteUrl: string;
+  isHost: boolean;
+  onMuteAll: () => void;
+  onRemove: (participantId: string) => void;
   onClose: () => void;
 }
 
@@ -27,7 +30,14 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
+export function RosterPanel({
+  entries,
+  inviteUrl,
+  isHost,
+  onMuteAll,
+  onRemove,
+  onClose,
+}: RosterPanelProps) {
   const [copied, setCopied] = useState(false);
 
   async function copyInvite() {
@@ -54,7 +64,10 @@ export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
 
       <ul className="flex-1 overflow-y-auto px-2 py-2">
         {entries.map((entry) => (
-          <li key={entry.id} className="flex items-center gap-3 rounded-lg px-2 py-2">
+          <li
+            key={entry.id}
+            className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5"
+          >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zoom-blue text-xs font-semibold text-white">
               {initials(entry.name)}
             </span>
@@ -67,6 +80,15 @@ export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
                 </span>
               )}
             </span>
+            {isHost && !entry.isSelf && (
+              <button
+                type="button"
+                onClick={() => onRemove(entry.id)}
+                className="hidden rounded border border-red-400/40 px-2 py-0.5 text-[11px] text-red-400 hover:bg-red-400/10 group-hover:block"
+              >
+                Remove
+              </button>
+            )}
             <span className="flex items-center gap-2 text-white/60">
               {entry.audioEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
               {entry.videoEnabled ? <Video size={14} /> : <VideoOff size={14} className="text-red-400" />}
@@ -75,15 +97,24 @@ export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
         ))}
       </ul>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="flex gap-2 border-t border-white/10 p-3">
         <button
           type="button"
           onClick={copyInvite}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-zoom-blue py-2 text-sm font-medium text-white transition hover:bg-zoom-blue-hover"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-zoom-blue py-2 text-sm font-medium text-white transition hover:bg-zoom-blue-hover"
         >
-          {copied ? <Check size={16} /> : <Link2 size={16} />}
-          {copied ? "Invite link copied" : "Copy invite link"}
+          {copied ? <Check size={15} /> : <Link2 size={15} />}
+          {copied ? "Copied" : "Invite"}
         </button>
+        {isHost && (
+          <button
+            type="button"
+            onClick={onMuteAll}
+            className="flex-1 rounded-lg border border-white/20 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            Mute All
+          </button>
+        )}
       </div>
     </div>
   );

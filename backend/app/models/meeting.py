@@ -42,13 +42,21 @@ class Meeting(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     duration_minutes: Mapped[int | None]
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    passcode_hash: Mapped[str | None]
+    # Plaintext on purpose: Zoom shows the passcode in the info popover and
+    # invitation text, so it must be retrievable (PLAN-V2 §3; encrypt-at-rest in prod)
+    passcode: Mapped[str | None]
+    timezone: Mapped[str | None]
+    is_pmi: Mapped[bool] = mapped_column(default=False)
 
     host = relationship("User", lazy="joined")
 
     @property
     def host_name(self) -> str:
         return self.host.name
+
+    @property
+    def has_passcode(self) -> bool:
+        return self.passcode is not None
     settings = relationship(
         "MeetingSettings", uselist=False, cascade="all, delete-orphan", lazy="joined"
     )
