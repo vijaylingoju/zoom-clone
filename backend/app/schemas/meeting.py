@@ -55,8 +55,29 @@ class MeetingOut(BaseModel):
         return f"{settings.frontend_base_url}/meeting/{self.meeting_code}"
 
 
+class MeetingCreatedOut(MeetingOut):
+    """Create response only: host_key must never appear on read endpoints."""
+
+    host_key: str
+
+
 class JoinRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=50)
+    host_key: str | None = None
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    participant_id: str
+    display_name: str
+    content: str
+    created_at: UtcDatetime
+
+
+class ChatSendRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
 
 
 class ParticipantOut(BaseModel):

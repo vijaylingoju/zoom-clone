@@ -8,8 +8,10 @@ interface VideoTileProps {
   name: string;
   muted?: boolean;
   videoOff?: boolean;
-  /** Self-view: mirror the video and silence local playback to avoid echo. */
+  /** Self-view: silence local playback to avoid echo (and mirror by default). */
   isSelf?: boolean;
+  /** Override mirroring (e.g. screen share must not be mirrored). */
+  mirror?: boolean;
 }
 
 function initials(name: string): string {
@@ -21,13 +23,23 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function VideoTile({ stream, name, muted, videoOff, isSelf }: VideoTileProps) {
+export function VideoTile({ stream, name, muted, videoOff, isSelf, mirror }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const showVideo = stream !== null && !videoOff && stream.getVideoTracks().length > 0;
+  const mirrored = mirror ?? isSelf;
 
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+    }
+  }, [stream, showVideo]);
+
+  // Remote audio must keep playing even when the tile shows the avatar —
+  // without a media element attached, the audio track is silent.
+  useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
     }
   }, [stream, showVideo]);
 
@@ -39,10 +51,11 @@ export function VideoTile({ stream, name, muted, videoOff, isSelf }: VideoTilePr
           autoPlay
           playsInline
           muted={isSelf}
-          className={`h-full w-full object-cover ${isSelf ? "-scale-x-100" : ""}`}
+          className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""}`}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
+          {!isSelf && stream && <audio ref={audioRef} autoPlay />}
           <span className="flex h-20 w-20 items-center justify-center rounded-full bg-zoom-blue text-2xl font-semibold text-white">
             {initials(name)}
           </span>

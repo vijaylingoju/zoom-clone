@@ -49,13 +49,40 @@ def test_scheduled_meeting_requires_start_and_duration(client):
     assert res.status_code == 422
 
 
-def test_join_and_leave_lifecycle(client):
-    code = client.post("/api/meetings", json={"meeting_type": "instant"}).json()["meeting_code"]
+def test_host_key_only_on_create_response(client):
+    created = client.post("/api/meetings", json={"meeting_type": "instant"}).json()
+    assert created["host_key"]
+    # read endpoints must never leak the host secret
+    fetched = client.get(f"/api/meetings/{created['meeting_code']}").json()
+    assert "host_key" not in fetched
 
-    join = client.post(f"/api/meetings/{code}/join", json={"display_name": "Vijay"})
+
+def test_join_without_host_key_is_participant(client):
+    created = client.post("/api/meetings", json={"meeting_type": "instant"}).json()
+    join = client.post(
+        f"/api/meetings/{created['meeting_code']}/join", json={"display_name": "Guest"}
+    )
+    assert join.json()["participant"]["role"] == "participant"
+
+
+def test_chat_history_empty_for_new_meeting(client):
+    code = client.post("/api/meetings", json={"meeting_type": "instant"}).json()["meeting_code"]
+    res = client.get(f"/api/meetings/{code}/chat")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_join_and_leave_lifecycle(client):
+    created = client.post("/api/meetings", json={"meeting_type": "instant"}).json()
+    code = created["meeting_code"]
+
+    join = client.post(
+        f"/api/meetings/{code}/join",
+        json={"display_name": "Vijay", "host_key": created["host_key"]},
+    )
     assert join.status_code == 200
     participant = join.json()["participant"]
-    assert participant["role"] == "host"  # default user created it
+    assert participant["role"] == "host"  # creator's browser presented the host_key
 
     leave = client.post(
         f"/api/meetings/{code}/leave", json={"participant_id": participant["id"]}

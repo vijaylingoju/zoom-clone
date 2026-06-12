@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { CalendarPlus, MonitorUp, Plus, Video } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, rememberHostKey } from "@/lib/api";
 
 interface TileProps {
   label: string;
@@ -44,7 +44,10 @@ export function ActionTiles({ onSchedule }: { onSchedule: () => void }) {
   const router = useRouter();
   const newMeeting = useMutation({
     mutationFn: api.createInstantMeeting,
-    onSuccess: (meeting) => router.push(`/meeting/${meeting.meeting_code}`),
+    onSuccess: (meeting) => {
+      rememberHostKey(meeting);
+      router.push(`/meeting/${meeting.meeting_code}`);
+    },
   });
 
   return (

@@ -68,22 +68,25 @@ export function useLocalMedia(): LocalMedia {
     };
   }, []);
 
+  // Track mutation must stay OUT of the state updater: React may invoke
+  // updaters twice (StrictMode), which silently re-disables the track while
+  // the UI reports it enabled. Derive next state from the tracks themselves.
   const toggleAudio = useCallback(() => {
-    setAudioEnabled((enabled) => {
-      streamRef.current?.getAudioTracks().forEach((track) => {
-        track.enabled = !enabled;
-      });
-      return !enabled;
+    const tracks = streamRef.current?.getAudioTracks() ?? [];
+    const next = !tracks.some((track) => track.enabled);
+    tracks.forEach((track) => {
+      track.enabled = next;
     });
+    setAudioEnabled(next);
   }, []);
 
   const toggleVideo = useCallback(() => {
-    setVideoEnabled((enabled) => {
-      streamRef.current?.getVideoTracks().forEach((track) => {
-        track.enabled = !enabled;
-      });
-      return !enabled;
+    const tracks = streamRef.current?.getVideoTracks() ?? [];
+    const next = !tracks.some((track) => track.enabled);
+    tracks.forEach((track) => {
+      track.enabled = next;
     });
+    setVideoEnabled(next);
   }, []);
 
   const stop = useCallback(() => {

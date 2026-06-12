@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
 from app.models import (
+    ChatMessage,
     Meeting,
     MeetingParticipant,
     MeetingSettings,
@@ -54,7 +55,13 @@ class MeetingService:
             raise HTTPException(status_code=404, detail="Meeting not found")
         return meeting
 
-    async def join(self, code: str, display_name: str, user: User | None) -> MeetingParticipant:
+    async def join(
+        self,
+        code: str,
+        display_name: str,
+        user: User | None,
+        host_key: str | None = None,
+    ) -> MeetingParticipant:
         meeting = await self.get_by_code_or_404(code)
         if meeting.status in (MeetingStatus.ENDED, MeetingStatus.CANCELLED):
             raise HTTPException(status_code=410, detail=f"Meeting has {meeting.status.value}")
@@ -63,7 +70,9 @@ class MeetingService:
             meeting.status = MeetingStatus.ACTIVE
             meeting.started_at = utcnow()
 
-        is_host = user is not None and user.id == meeting.host_id
+        # Host role requires the creator's secret, not just the shared default
+        # user — otherwise every browser would join as host (no real auth yet)
+        is_host = host_key is not None and host_key == meeting.host_key
         participant = MeetingParticipant(
             meeting_id=meeting.id,
             user_id=user.id if user else None,
@@ -96,6 +105,40 @@ class MeetingService:
             meeting.status = MeetingStatus.ENDED
             meeting.ended_at = utcnow()
         await self.db.commit()
+
+    async def save_chat_message(
+        self, code: str, participant_id: str, content: str
+    ) -> dict | None:
+        meeting = await self.repo.get_by_code(code)
+        participant = await self.repo.get_participant(participant_id)
+        if meeting is None or participant is None or participant.meeting_id != meeting.id:
+            return None
+        message = ChatMessage(
+            meeting_id=meeting.id, participant_id=participant_id, content=content
+        )
+        self.db.add(message)
+        await self.db.commit()
+        await self.db.refresh(message)
+        return {
+            "id": message.id,
+            "participant_id": participant_id,
+            "display_name": participant.display_name,
+            "content": message.content,
+            "created_at": message.created_at.isoformat() + "Z",
+        }
+
+    async def list_chat(self, code: str) -> list[dict]:
+        meeting = await self.get_by_code_or_404(code)
+        return [
+            {
+                "id": message.id,
+                "participant_id": message.participant_id,
+                "display_name": display_name,
+                "content": message.content,
+                "created_at": message.created_at,
+            }
+            for message, display_name in await self.repo.list_chat(meeting.id)
+        ]
 
     async def list_upcoming(self, host: User) -> list[Meeting]:
         return await self.repo.list_upcoming(host.id, utcnow())

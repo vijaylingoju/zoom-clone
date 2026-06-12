@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { api } from "@/lib/api";
 import { SignalingClient, signalingUrl } from "@/lib/signaling";
 import { PeerManager } from "@/lib/webrtc/PeerManager";
-import type { Participant } from "@/lib/types";
+import type { ChatMessage, Participant } from "@/lib/types";
 
 export interface RemotePeer {
   id: string;
@@ -21,6 +22,11 @@ interface RosterEntry {
   role: string;
   is_muted: boolean;
   is_video_off: boolean;
+}
+
+function mergeChat(history: ChatMessage[], live: ChatMessage[]): ChatMessage[] {
+  const seen = new Set(history.map((m) => m.id));
+  return [...history, ...live.filter((m) => !seen.has(m.id))];
 }
 
 function toRemotePeer(entry: RosterEntry): RemotePeer {
@@ -44,13 +50,25 @@ export function useMeetingConnection(
   localStream: MediaStream | null,
 ) {
   const [peers, setPeers] = useState<Record<string, RemotePeer>>({});
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const signalingRef = useRef<SignalingClient | null>(null);
+  const peerManagerRef = useRef<PeerManager | null>(null);
   // Ref, not dep: a late-arriving stream must not tear down the connection
   const localStreamRef = useRef(localStream);
   localStreamRef.current = localStream;
 
   useEffect(() => {
     if (!participant) return;
+
+    let active = true;
+    api
+      .chatHistory(code)
+      .then((history) => {
+        if (active) setChatMessages((live) => mergeChat(history, live));
+      })
+      .catch(() => {
+        // history is best-effort; live messages still arrive over WS
+      });
 
     const signaling = new SignalingClient(signalingUrl(code, participant.id));
     signalingRef.current = signaling;
@@ -70,6 +88,7 @@ export function useMeetingConnection(
           ),
       },
     );
+    peerManagerRef.current = peerManager;
 
     const unsubscribe = signaling.onMessage((message) => {
       switch (message.type) {
@@ -102,6 +121,13 @@ export function useMeetingConnection(
             void peerManager.handleSignal(message.from, message.type, message.payload);
           }
           break;
+        case "chat": {
+          const incoming = message.payload as ChatMessage;
+          setChatMessages((prev) =>
+            prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
+          );
+          break;
+        }
         case "media-state": {
           if (!message.from) break;
           const { audio, video } = message.payload as { audio: boolean; video: boolean };
@@ -125,11 +151,14 @@ export function useMeetingConnection(
     signaling.connect();
 
     return () => {
+      active = false;
       unsubscribe();
       peerManager.closeAll();
       signaling.close();
       signalingRef.current = null;
+      peerManagerRef.current = null;
       setPeers({});
+      setChatMessages([]);
     };
   }, [code, participant]);
 
@@ -137,5 +166,19 @@ export function useMeetingConnection(
     signalingRef.current?.send({ type: "media-state", payload: { audio, video } });
   }, []);
 
-  return { peers: Object.values(peers), sendMediaState };
+  const sendChat = useCallback((content: string) => {
+    signalingRef.current?.send({ type: "chat", payload: { content } });
+  }, []);
+
+  const setVideoOverride = useCallback(async (track: MediaStreamTrack | null) => {
+    await peerManagerRef.current?.setVideoOverride(track);
+  }, []);
+
+  return {
+    peers: Object.values(peers),
+    chatMessages,
+    sendMediaState,
+    sendChat,
+    setVideoOverride,
+  };
 }

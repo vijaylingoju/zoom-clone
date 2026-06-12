@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Meeting, MeetingParticipant, MeetingStatus
+from app.models import ChatMessage, Meeting, MeetingParticipant, MeetingStatus
 
 
 class MeetingRepository:
@@ -58,3 +58,12 @@ class MeetingRepository:
 
     async def get_participant(self, participant_id: str) -> MeetingParticipant | None:
         return await self.db.get(MeetingParticipant, participant_id)
+
+    async def list_chat(self, meeting_id: str) -> list[tuple[ChatMessage, str]]:
+        result = await self.db.execute(
+            select(ChatMessage, MeetingParticipant.display_name)
+            .join(MeetingParticipant, ChatMessage.participant_id == MeetingParticipant.id)
+            .where(ChatMessage.meeting_id == meeting_id, ChatMessage.deleted_at.is_(None))
+            .order_by(ChatMessage.created_at)
+        )
+        return [(row[0], row[1]) for row in result.all()]

@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, X } from "lucide-react";
 import { useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, rememberHostKey } from "@/lib/api";
 import type { Meeting } from "@/lib/types";
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
@@ -33,6 +33,7 @@ export function ScheduleModal({ open, onClose }: { open: boolean; onClose: () =>
   const schedule = useMutation({
     mutationFn: api.scheduleMeeting,
     onSuccess: (meeting) => {
+      rememberHostKey(meeting);
       setCreated(meeting);
       queryClient.invalidateQueries({ queryKey: ["meetings", "upcoming"] });
     },

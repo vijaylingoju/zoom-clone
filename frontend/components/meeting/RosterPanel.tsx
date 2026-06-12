@@ -37,7 +37,7 @@ export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
   }
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-10 flex w-72 flex-col border-l border-white/10 bg-[#1f1f1f] sm:static">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <h2 className="text-sm font-semibold text-white">
           Participants ({entries.length})
@@ -85,6 +85,6 @@ export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
           {copied ? "Invite link copied" : "Copy invite link"}
         </button>
       </div>
-    </aside>
+    </div>
   );
 }

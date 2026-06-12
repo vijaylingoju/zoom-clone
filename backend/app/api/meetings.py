@@ -5,10 +5,12 @@ from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models import User
 from app.schemas.meeting import (
+    ChatMessageOut,
     JoinRequest,
     JoinResponse,
     LeaveRequest,
     MeetingCreate,
+    MeetingCreatedOut,
     MeetingOut,
     ParticipantOut,
 )
@@ -21,13 +23,13 @@ def get_service(db: AsyncSession = Depends(get_db)) -> MeetingService:
     return MeetingService(db)
 
 
-@router.post("", response_model=MeetingOut, status_code=201)
+@router.post("", response_model=MeetingCreatedOut, status_code=201)
 async def create_meeting(
     payload: MeetingCreate,
     user: User = Depends(get_current_user),
     service: MeetingService = Depends(get_service),
-) -> MeetingOut:
-    return MeetingOut.model_validate(await service.create_meeting(user, payload))
+) -> MeetingCreatedOut:
+    return MeetingCreatedOut.model_validate(await service.create_meeting(user, payload))
 
 
 @router.get("/upcoming", response_model=list[MeetingOut])
@@ -61,12 +63,20 @@ async def join_meeting(
     user: User = Depends(get_current_user),
     service: MeetingService = Depends(get_service),
 ) -> JoinResponse:
-    participant = await service.join(code, payload.display_name, user)
+    participant = await service.join(code, payload.display_name, user, payload.host_key)
     meeting = await service.get_by_code_or_404(code)
     return JoinResponse(
         participant=ParticipantOut.model_validate(participant),
         meeting=MeetingOut.model_validate(meeting),
     )
+
+
+@router.get("/{code}/chat", response_model=list[ChatMessageOut])
+async def chat_history(
+    code: str,
+    service: MeetingService = Depends(get_service),
+) -> list[ChatMessageOut]:
+    return [ChatMessageOut.model_validate(m) for m in await service.list_chat(code)]
 
 
 @router.post("/{code}/leave", status_code=204)

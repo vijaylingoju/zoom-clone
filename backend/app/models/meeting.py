@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Enum, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base
+from app.core.db import Base, new_id
 from app.models.base import IdMixin, SoftDeleteMixin, TimestampMixin
 
 
@@ -29,6 +29,9 @@ class Meeting(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
 
     meeting_code: Mapped[str] = mapped_column(unique=True, index=True)
     host_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    # Secret returned only to the creating browser; required to claim the host
+    # role at join (all browsers share the seeded default user until real auth)
+    host_key: Mapped[str] = mapped_column(default=new_id)
     title: Mapped[str] = mapped_column(default="Instant Meeting")
     description: Mapped[str | None]
     meeting_type: Mapped[MeetingType] = mapped_column(_enum(MeetingType, "meeting_type"))

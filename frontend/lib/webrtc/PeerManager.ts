@@ -22,6 +22,8 @@ interface PeerState {
  */
 export class PeerManager {
   private peers = new Map<string, PeerState>();
+  /** Screen-share track currently replacing the camera, if any. */
+  private videoOverride: MediaStreamTrack | null = null;
 
   constructor(
     private selfId: string,
@@ -29,6 +31,24 @@ export class PeerManager {
     private send: SendSignal,
     private events: PeerManagerEvents,
   ) {}
+
+  /**
+   * Swap the outgoing video for every peer (screen share on / off).
+   * Uses RTCRtpSender.replaceTrack — no renegotiation when a video sender
+   * already exists; falls back to addTrack (renegotiates) when it doesn't.
+   */
+  async setVideoOverride(track: MediaStreamTrack | null): Promise<void> {
+    this.videoOverride = track;
+    const target = track ?? this.localStream?.getVideoTracks()[0] ?? null;
+    for (const peer of this.peers.values()) {
+      const sender = peer.pc.getSenders().find((s) => s.track?.kind === "video");
+      if (sender) {
+        await sender.replaceTrack(target);
+      } else if (target) {
+        peer.pc.addTrack(target, this.localStream ?? new MediaStream([target]));
+      }
+    }
+  }
 
   /** Called by the newcomer for every peer already in the room. */
   async connectTo(peerId: string): Promise<void> {
@@ -90,9 +110,14 @@ export class PeerManager {
     };
     this.peers.set(peerId, peer);
 
-    this.localStream?.getTracks().forEach((track) => {
+    this.localStream?.getAudioTracks().forEach((track) => {
       pc.addTrack(track, this.localStream as MediaStream);
     });
+    // peers joining mid-share must receive the screen, not the camera
+    const videoTrack = this.videoOverride ?? this.localStream?.getVideoTracks()[0];
+    if (videoTrack) {
+      pc.addTrack(videoTrack, this.localStream ?? new MediaStream([videoTrack]));
+    }
 
     pc.onnegotiationneeded = () => void this.makeOffer(peerId, peer);
     pc.onicecandidate = (event) => {

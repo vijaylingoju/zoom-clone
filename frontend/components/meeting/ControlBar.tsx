@@ -1,6 +1,15 @@
 "use client";
 
-import { Mic, MicOff, Phone, Users, Video, VideoOff } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  MessageSquare,
+  MonitorUp,
+  Phone,
+  Users,
+  Video,
+  VideoOff,
+} from "lucide-react";
 
 interface ControlButtonProps {
   label: string;
@@ -30,9 +39,12 @@ interface ControlBarProps {
   videoEnabled: boolean;
   mediaAvailable: boolean;
   participantCount: number;
+  sharing: boolean;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onToggleRoster: () => void;
+  onToggleChat: () => void;
+  onToggleShare: () => void;
   onLeave: () => void;
 }
 
@@ -41,9 +53,12 @@ export function ControlBar({
   videoEnabled,
   mediaAvailable,
   participantCount,
+  sharing,
   onToggleAudio,
   onToggleVideo,
   onToggleRoster,
+  onToggleChat,
+  onToggleShare,
   onLeave,
 }: ControlBarProps) {
   return (
@@ -77,6 +92,23 @@ export function ControlBar({
             {participantCount}
           </span>
         </div>
+        <ControlButton
+          label="Chat"
+          active
+          onClick={onToggleChat}
+          onIcon={<MessageSquare size={20} />}
+          offIcon={<MessageSquare size={20} />}
+        />
+        <button
+          type="button"
+          onClick={onToggleShare}
+          className={`flex w-16 flex-col items-center gap-1 rounded-lg py-2 transition hover:bg-white/10 ${
+            sharing ? "text-red-400" : "text-[#23D959]"
+          }`}
+        >
+          <MonitorUp size={20} />
+          <span className="text-[11px]">{sharing ? "Stop Share" : "Share"}</span>
+        </button>
       </div>
       <button
         type="button"

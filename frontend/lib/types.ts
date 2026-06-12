@@ -36,9 +36,21 @@ export interface Participant {
   joined_at: string;
 }
 
+export interface MeetingCreated extends Meeting {
+  host_key: string;
+}
+
 export interface JoinResponse {
   participant: Participant;
   meeting: Meeting;
+}
+
+export interface ChatMessage {
+  id: string;
+  participant_id: string;
+  display_name: string;
+  content: string;
+  created_at: string;
 }
 
 export interface ScheduleMeetingInput {

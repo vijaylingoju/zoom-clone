@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.core.db import SessionLocal
 from app.models import MeetingParticipant
 from app.repositories.meeting_repo import MeetingRepository
+from app.schemas.meeting import ChatSendRequest
 from app.services.meeting_service import MeetingService
 from app.ws.room_manager import ParticipantInfo, room_manager
 
@@ -112,5 +113,19 @@ async def _handle(code: str, sender_id: str, message: dict[str, Any]) -> None:
             {"type": "media-state", "from": sender_id, "payload": {"audio": audio, "video": video}},
             exclude=sender_id,
         )
+        return
+
+    if msg_type == "chat" and isinstance(payload, dict):
+        try:
+            request = ChatSendRequest(content=str(payload.get("content", "")))
+        except ValueError:
+            return
+        async with SessionLocal() as db:
+            saved = await MeetingService(db).save_chat_message(
+                code, sender_id, request.content.strip()
+            )
+        if saved:
+            # broadcast to everyone incl. the sender: one consistent ordering
+            await room_manager.broadcast(code, {"type": "chat", "payload": saved})
         return
     # unknown message types are ignored on purpose (forward compatibility)

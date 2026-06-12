@@ -6,24 +6,49 @@ import { use, useState } from "react";
 
 import { Lobby } from "@/components/meeting/Lobby";
 import { Room } from "@/components/meeting/Room";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, hostKeyFor } from "@/lib/api";
 import type { Participant } from "@/lib/types";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 
 type Stage = "lobby" | "room" | "left";
 
-function DarkNotice({ title, detail, onBack }: { title: string; detail?: string; onBack: () => void }) {
+function DarkNotice({
+  title,
+  detail,
+  onBack,
+  onRejoin,
+}: {
+  title: string;
+  detail?: string;
+  onBack: () => void;
+  onRejoin?: () => void;
+}) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-room-bg px-4 text-white">
       <h1 className="text-xl font-semibold">{title}</h1>
       {detail && <p className="mt-2 text-sm text-white/60">{detail}</p>}
-      <button
-        type="button"
-        onClick={onBack}
-        className="mt-8 rounded-lg bg-zoom-blue px-6 py-2 text-sm font-medium transition hover:bg-zoom-blue-hover"
-      >
-        Back to dashboard
-      </button>
+      <div className="mt-8 flex items-center gap-3">
+        {onRejoin && (
+          <button
+            type="button"
+            onClick={onRejoin}
+            className="rounded-lg bg-zoom-blue px-6 py-2 text-sm font-medium transition hover:bg-zoom-blue-hover"
+          >
+            Rejoin
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onBack}
+          className={`rounded-lg px-6 py-2 text-sm font-medium transition ${
+            onRejoin
+              ? "border border-white/25 hover:bg-white/10"
+              : "bg-zoom-blue hover:bg-zoom-blue-hover"
+          }`}
+        >
+          Back to dashboard
+        </button>
+      </div>
     </div>
   );
 }
@@ -50,7 +75,7 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
     setJoining(true);
     setJoinError(null);
     try {
-      const result = await api.joinMeeting(code, displayName);
+      const result = await api.joinMeeting(code, displayName, hostKeyFor(code));
       setParticipant(result.participant);
       setStage("room");
     } catch (err) {
@@ -120,7 +145,14 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
   }
 
   if (stage === "left") {
-    return <DarkNotice title="You left the meeting" onBack={backToDashboard} />;
+    // reload restarts the page state machine cleanly: validate → lobby → join
+    return (
+      <DarkNotice
+        title="You left the meeting"
+        onBack={backToDashboard}
+        onRejoin={() => window.location.reload()}
+      />
+    );
   }
 
   if (stage === "room" && participant) {

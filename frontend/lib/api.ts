@@ -1,9 +1,21 @@
 import type {
+  ChatMessage,
   JoinResponse,
   Meeting,
+  MeetingCreated,
   ScheduleMeetingInput,
   User,
 } from "./types";
+
+const HOST_KEY_PREFIX = "zc_host_key_";
+
+export function rememberHostKey(meeting: MeetingCreated): void {
+  localStorage.setItem(HOST_KEY_PREFIX + meeting.meeting_code, meeting.host_key);
+}
+
+export function hostKeyFor(code: string): string | null {
+  return localStorage.getItem(HOST_KEY_PREFIX + code);
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -40,20 +52,21 @@ export const api = {
   recentMeetings: () => request<Meeting[]>("/meetings/recent"),
   validateMeeting: (code: string) => request<Meeting>(`/meetings/${code}`),
   createInstantMeeting: () =>
-    request<Meeting>("/meetings", {
+    request<MeetingCreated>("/meetings", {
       method: "POST",
       body: JSON.stringify({ meeting_type: "instant" }),
     }),
   scheduleMeeting: (input: ScheduleMeetingInput) =>
-    request<Meeting>("/meetings", {
+    request<MeetingCreated>("/meetings", {
       method: "POST",
       body: JSON.stringify({ ...input, meeting_type: "scheduled" }),
     }),
-  joinMeeting: (code: string, displayName: string) =>
+  joinMeeting: (code: string, displayName: string, hostKey?: string | null) =>
     request<JoinResponse>(`/meetings/${code}/join`, {
       method: "POST",
-      body: JSON.stringify({ display_name: displayName }),
+      body: JSON.stringify({ display_name: displayName, host_key: hostKey ?? null }),
     }),
+  chatHistory: (code: string) => request<ChatMessage[]>(`/meetings/${code}/chat`),
   leaveMeeting: (code: string, participantId: string) =>
     request<void>(`/meetings/${code}/leave`, {
       method: "POST",

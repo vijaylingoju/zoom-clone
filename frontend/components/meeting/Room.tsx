@@ -1,10 +1,11 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { ControlBar } from "@/components/meeting/ControlBar";
+import { ChatPanel } from "@/components/meeting/ChatPanel";
 import { RosterPanel } from "@/components/meeting/RosterPanel";
 import { useMeetingConnection } from "@/hooks/useMeetingConnection";
 import type { LocalMedia } from "@/hooks/useLocalMedia";
@@ -24,14 +25,15 @@ function gridColumns(count: number): string {
 }
 
 export function Room({ meeting, participant, media, onLeave }: RoomProps) {
-  const { peers, sendMediaState } = useMeetingConnection(
-    meeting.meeting_code,
-    participant,
-    media.stream,
-  );
+  const { peers, chatMessages, sendMediaState, sendChat, setVideoOverride } =
+    useMeetingConnection(meeting.meeting_code, participant, media.stream);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const tileCount = peers.length + 1;
+  const panelOpen = rosterOpen || chatOpen;
 
   function toggleAudio() {
     media.toggleAudio();
@@ -42,6 +44,41 @@ export function Room({ meeting, participant, media, onLeave }: RoomProps) {
     media.toggleVideo();
     sendMediaState(media.audioEnabled, !media.videoEnabled);
   }
+
+  function stopShare() {
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setScreenStream(null);
+    void setVideoOverride(null);
+    sendMediaState(media.audioEnabled, media.videoEnabled);
+  }
+
+  async function toggleShare() {
+    if (screenStreamRef.current) {
+      stopShare();
+      return;
+    }
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = display.getVideoTracks()[0];
+      track.onended = stopShare; // browser's own "Stop sharing" bar
+      screenStreamRef.current = display;
+      setScreenStream(display);
+      await setVideoOverride(track);
+      // peers render us by media-state: ensure they show the screen even if
+      // our camera was off
+      sendMediaState(media.audioEnabled, true);
+    } catch {
+      // user cancelled the picker — nothing to do
+    }
+  }
+
+  // stop screen capture if we unmount mid-share (leave/end)
+  useEffect(() => {
+    return () => {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   async function copyInviteFromHeader() {
     await navigator.clipboard.writeText(meeting.join_url);
@@ -94,11 +131,12 @@ export function Room({ meeting, participant, media, onLeave }: RoomProps) {
         <main className="flex flex-1 items-center justify-center overflow-y-auto p-4">
           <div className={`grid w-full max-w-5xl gap-3 ${gridColumns(tileCount)}`}>
             <VideoTile
-              stream={media.stream}
-              name={`${participant.display_name} (You)`}
+              stream={screenStream ?? media.stream}
+              name={`${participant.display_name} (You${screenStream ? ", sharing" : ""})`}
               muted={!media.audioEnabled}
-              videoOff={!media.videoEnabled}
+              videoOff={screenStream ? false : !media.videoEnabled}
               isSelf
+              mirror={screenStream ? false : undefined}
             />
             {peers.map((peer) => (
               <VideoTile
@@ -112,12 +150,24 @@ export function Room({ meeting, participant, media, onLeave }: RoomProps) {
           </div>
         </main>
 
-        {rosterOpen && (
-          <RosterPanel
-            entries={rosterEntries}
-            inviteUrl={meeting.join_url}
-            onClose={() => setRosterOpen(false)}
-          />
+        {panelOpen && (
+          <aside className="absolute inset-y-0 right-0 z-10 flex w-72 flex-col border-l border-white/10 bg-[#1f1f1f] sm:static sm:w-80">
+            {rosterOpen && (
+              <RosterPanel
+                entries={rosterEntries}
+                inviteUrl={meeting.join_url}
+                onClose={() => setRosterOpen(false)}
+              />
+            )}
+            {chatOpen && (
+              <ChatPanel
+                messages={chatMessages}
+                selfParticipantId={participant.id}
+                onSend={sendChat}
+                onClose={() => setChatOpen(false)}
+              />
+            )}
+          </aside>
         )}
       </div>
 
@@ -126,9 +176,12 @@ export function Room({ meeting, participant, media, onLeave }: RoomProps) {
         videoEnabled={media.videoEnabled}
         mediaAvailable={media.permission === "granted"}
         participantCount={tileCount}
+        sharing={screenStream !== null}
         onToggleAudio={toggleAudio}
         onToggleVideo={toggleVideo}
         onToggleRoster={() => setRosterOpen((open) => !open)}
+        onToggleChat={() => setChatOpen((open) => !open)}
+        onToggleShare={() => void toggleShare()}
         onLeave={onLeave}
       />
     </div>
