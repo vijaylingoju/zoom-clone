@@ -42,6 +42,10 @@ class Meeting(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     passcode_hash: Mapped[str | None]
 
     host = relationship("User", lazy="joined")
+
+    @property
+    def host_name(self) -> str:
+        return self.host.name
     settings = relationship(
         "MeetingSettings", uselist=False, cascade="all, delete-orphan", lazy="joined"
     )
