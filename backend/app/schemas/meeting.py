@@ -1,9 +1,18 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from app.core.config import settings
 from app.models import MeetingStatus, MeetingType, ParticipantRole
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+# DB stores naive UTC (SQLite drops tzinfo); re-attach UTC so clients get ISO with offset
+UtcDatetime = Annotated[datetime, AfterValidator(_as_utc)]
 
 
 class MeetingCreate(BaseModel):
@@ -34,11 +43,11 @@ class MeetingOut(BaseModel):
     status: MeetingStatus
     host_id: str
     host_name: str
-    scheduled_start: datetime | None
+    scheduled_start: UtcDatetime | None
     duration_minutes: int | None
-    started_at: datetime | None
-    ended_at: datetime | None
-    created_at: datetime
+    started_at: UtcDatetime | None
+    ended_at: UtcDatetime | None
+    created_at: UtcDatetime
 
     @computed_field
     @property
@@ -58,7 +67,7 @@ class ParticipantOut(BaseModel):
     role: ParticipantRole
     is_muted: bool
     is_video_off: bool
-    joined_at: datetime
+    joined_at: UtcDatetime
 
 
 class JoinResponse(BaseModel):

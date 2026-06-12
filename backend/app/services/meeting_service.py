@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,9 @@ class MeetingService:
 
     async def create_meeting(self, host: User, payload: MeetingCreate) -> Meeting:
         is_instant = payload.meeting_type == MeetingType.INSTANT
+        scheduled_start = payload.scheduled_start
+        if scheduled_start is not None and scheduled_start.tzinfo is not None:
+            scheduled_start = scheduled_start.astimezone(UTC).replace(tzinfo=None)
         meeting = Meeting(
             meeting_code=await self._unique_code(),
             host_id=host.id,
@@ -32,7 +37,7 @@ class MeetingService:
             description=payload.description,
             meeting_type=payload.meeting_type,
             status=MeetingStatus.ACTIVE if is_instant else MeetingStatus.SCHEDULED,
-            scheduled_start=None if is_instant else payload.scheduled_start,
+            scheduled_start=None if is_instant else scheduled_start,
             duration_minutes=None if is_instant else payload.duration_minutes,
             started_at=utcnow() if is_instant else None,
         )

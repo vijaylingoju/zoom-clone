@@ -16,7 +16,9 @@ class Base(DeclarativeBase):
 
 
 def utcnow() -> datetime:
-    return datetime.now(UTC)
+    # Naive UTC: SQLite ignores DateTime(timezone=True), so storing naive UTC
+    # everywhere keeps comparisons consistent; DTOs re-attach UTC on the way out.
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def new_id() -> str:
