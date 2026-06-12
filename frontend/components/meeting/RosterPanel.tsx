@@ -1,0 +1,90 @@
+"use client";
+
+import { Check, Link2, Mic, MicOff, Video, VideoOff, X } from "lucide-react";
+import { useState } from "react";
+
+interface RosterEntry {
+  id: string;
+  name: string;
+  role: string;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  isSelf?: boolean;
+}
+
+interface RosterPanelProps {
+  entries: RosterEntry[];
+  inviteUrl: string;
+  onClose: () => void;
+}
+
+function initials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+export function RosterPanel({ entries, inviteUrl, onClose }: RosterPanelProps) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyInvite() {
+    await navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <aside className="absolute inset-y-0 right-0 z-10 flex w-72 flex-col border-l border-white/10 bg-[#1f1f1f] sm:static">
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <h2 className="text-sm font-semibold text-white">
+          Participants ({entries.length})
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close participants panel"
+          className="rounded p-1 text-white/60 hover:bg-white/10"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <ul className="flex-1 overflow-y-auto px-2 py-2">
+        {entries.map((entry) => (
+          <li key={entry.id} className="flex items-center gap-3 rounded-lg px-2 py-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zoom-blue text-xs font-semibold text-white">
+              {initials(entry.name)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-white">
+              {entry.name}
+              {entry.isSelf && <span className="text-white/50"> (You)</span>}
+              {entry.role === "host" && (
+                <span className="ml-1.5 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white/70">
+                  Host
+                </span>
+              )}
+            </span>
+            <span className="flex items-center gap-2 text-white/60">
+              {entry.audioEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
+              {entry.videoEnabled ? <Video size={14} /> : <VideoOff size={14} className="text-red-400" />}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="border-t border-white/10 p-3">
+        <button
+          type="button"
+          onClick={copyInvite}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-zoom-blue py-2 text-sm font-medium text-white transition hover:bg-zoom-blue-hover"
+        >
+          {copied ? <Check size={16} /> : <Link2 size={16} />}
+          {copied ? "Invite link copied" : "Copy invite link"}
+        </button>
+      </div>
+    </aside>
+  );
+}

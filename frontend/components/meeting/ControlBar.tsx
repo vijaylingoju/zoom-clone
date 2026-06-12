@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, Phone, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, Phone, Users, Video, VideoOff } from "lucide-react";
 
 interface ControlButtonProps {
   label: string;
@@ -29,8 +29,10 @@ interface ControlBarProps {
   audioEnabled: boolean;
   videoEnabled: boolean;
   mediaAvailable: boolean;
+  participantCount: number;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
+  onToggleRoster: () => void;
   onLeave: () => void;
 }
 
@@ -38,8 +40,10 @@ export function ControlBar({
   audioEnabled,
   videoEnabled,
   mediaAvailable,
+  participantCount,
   onToggleAudio,
   onToggleVideo,
+  onToggleRoster,
   onLeave,
 }: ControlBarProps) {
   return (
@@ -61,6 +65,18 @@ export function ControlBar({
           offIcon={<VideoOff size={20} />}
           disabled={!mediaAvailable}
         />
+        <div className="relative">
+          <ControlButton
+            label="Participants"
+            active
+            onClick={onToggleRoster}
+            onIcon={<Users size={20} />}
+            offIcon={<Users size={20} />}
+          />
+          <span className="pointer-events-none absolute -top-0.5 right-1 rounded-full bg-zoom-blue px-1.5 text-[10px] font-semibold text-white">
+            {participantCount}
+          </span>
+        </div>
       </div>
       <button
         type="button"
