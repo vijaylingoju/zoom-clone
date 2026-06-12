@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: zoom-clone-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      # JSON list of allowed browser origins — set to the Vercel URL after the
+      # frontend deploy, e.g. ["https://zoom-clone-xxx.vercel.app"]
+      - key: CORS_ORIGINS
+        sync: false
+      # Base URL used to build invite links, e.g. https://zoom-clone-xxx.vercel.app
+      - key: FRONTEND_BASE_URL
+        sync: false
