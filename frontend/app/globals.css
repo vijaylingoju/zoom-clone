@@ -23,13 +23,13 @@
   --color-ink-soft: var(--ink-soft);
   --color-room-bg: var(--room-bg);
   --color-room-panel: var(--room-panel);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-lato);
 }
 
 body {
   background: var(--surface);
   color: var(--ink);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-lato), "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 /* floating meeting reaction: rise across the full stage */
@@ -71,4 +71,19 @@ body {
 }
 .zc-active-speaker {
   animation: zc-active-pulse 1.6s ease-in-out infinite;
+}
+
+/* skeleton shimmer */
+@keyframes zc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.zc-shimmer {
+  background: linear-gradient(90deg, #e8e8ea 0%, #f4f4f6 45%, #e8e8ea 90%);
+  background-size: 200% 100%;
+  animation: zc-shimmer 1.5s ease-in-out infinite;
 }

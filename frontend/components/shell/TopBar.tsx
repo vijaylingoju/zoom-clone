@@ -2,9 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, History, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
+import { clearAuth } from "@/lib/auth";
 import { formatTime } from "@/lib/format";
 
 function initials(name: string): string {
@@ -58,7 +60,14 @@ function HistoryMenu({ onClose }: { onClose: () => void }) {
 
 function AvatarMenu({ onClose }: { onClose: () => void }) {
   const ref = useClickOutside(onClose);
+  const router = useRouter();
   const { data: user } = useQuery({ queryKey: ["me"], queryFn: api.me });
+
+  function signOut() {
+    clearAuth();
+    onClose();
+    router.push("/welcome");
+  }
 
   return (
     <div
@@ -69,17 +78,21 @@ function AvatarMenu({ onClose }: { onClose: () => void }) {
         <p className="text-sm font-medium">{user?.name}</p>
         <p className="truncate text-xs text-ink-soft">{user?.email}</p>
       </div>
-      {["Settings", "Sign Out"].map((label) => (
-        <button
-          key={label}
-          type="button"
-          onClick={onClose}
-          title="Not available in this demo"
-          className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-soft hover:bg-black/5"
-        >
-          {label}
-        </button>
-      ))}
+      <button
+        type="button"
+        onClick={onClose}
+        title="Not available in this demo"
+        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-soft hover:bg-black/5"
+      >
+        Settings
+      </button>
+      <button
+        type="button"
+        onClick={signOut}
+        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-black/5"
+      >
+        Sign Out
+      </button>
     </div>
   );
 }
