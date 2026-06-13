@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import meetings, users
+from app.api import meetings, users, webrtc
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
 from app.seed import seed
@@ -33,6 +33,7 @@ app.add_middleware(
 
 app.include_router(users.router, prefix="/api")
 app.include_router(meetings.router, prefix="/api")
+app.include_router(webrtc.router, prefix="/api")
 app.include_router(signaling.router)
 
 

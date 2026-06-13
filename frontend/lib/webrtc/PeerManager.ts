@@ -13,6 +13,8 @@ interface PeerState {
   ignoreOffer: boolean;
   /** Perfect-negotiation role: the polite peer rolls back on offer glare. */
   polite: boolean;
+  /** Candidates that arrived before setRemoteDescription. */
+  pendingCandidates: RTCIceCandidateInit[];
 }
 
 /**
@@ -32,6 +34,7 @@ export class PeerManager {
     private localStream: MediaStream | null,
     private send: SendSignal,
     private events: PeerManagerEvents,
+    private iceServers: RTCIceServer[] = ICE_SERVERS,
   ) {}
 
   /**
@@ -42,7 +45,7 @@ export class PeerManager {
   async setVideoOverride(track: MediaStreamTrack | null): Promise<void> {
     this.videoOverride = track;
     const target = track ?? this.localStream?.getVideoTracks()[0] ?? null;
-    for (const peer of this.peers.values()) {
+    for (const [peerId, peer] of this.peers) {
       const sender = peer.pc.getSenders().find((s) => s.track?.kind === "video");
       if (sender) {
         await sender.replaceTrack(target);
@@ -57,9 +60,8 @@ export class PeerManager {
    * Replaces the matching-kind sender so the change is seamless (no renegotiation).
    */
   async replaceLocalTrack(track: MediaStreamTrack): Promise<void> {
-    // don't clobber an active screen share with a camera device switch
     if (track.kind === "video" && this.videoOverride) return;
-    for (const peer of this.peers.values()) {
+    for (const [peerId, peer] of this.peers) {
       const sender = peer.pc.getSenders().find((s) => s.track?.kind === track.kind);
       if (sender) {
         await sender.replaceTrack(track);
@@ -71,9 +73,8 @@ export class PeerManager {
 
   /** Called by the newcomer for every peer already in the room. */
   async connectTo(peerId: string): Promise<void> {
+    if (peerId === this.selfId) return;
     this.getOrCreate(peerId);
-    // onnegotiationneeded fires from addTrack and produces the offer;
-    // with no local tracks there is nothing to negotiate yet, so nudge:
     if (!this.localStream || this.localStream.getTracks().length === 0) {
       const peer = this.peers.get(peerId);
       if (peer) await this.makeOffer(peerId, peer);
@@ -82,21 +83,37 @@ export class PeerManager {
 
   async handleSignal(from: string, type: string, payload: unknown): Promise<void> {
     const peer = this.getOrCreate(from);
-    if (type === "offer" || type === "answer") {
+    if (type === "offer") {
       const description = payload as RTCSessionDescriptionInit;
-      const collision =
-        type === "offer" && (peer.makingOffer || peer.pc.signalingState !== "stable");
-      peer.ignoreOffer = !peer.polite && collision;
+      const offerCollision = peer.makingOffer || peer.pc.signalingState !== "stable";
+      peer.ignoreOffer = !peer.polite && offerCollision;
       if (peer.ignoreOffer) return;
 
-      await peer.pc.setRemoteDescription(description);
-      if (type === "offer") {
-        await peer.pc.setLocalDescription();
-        this.send("answer", from, peer.pc.localDescription?.toJSON());
+      if (offerCollision && peer.polite) {
+        await peer.pc.setLocalDescription({ type: "rollback" });
       }
-    } else if (type === "ice-candidate") {
+
+      await peer.pc.setRemoteDescription(description);
+      await peer.pc.setLocalDescription();
+      this.send("answer", from, peer.pc.localDescription?.toJSON());
+      await this.flushCandidates(peer);
+      return;
+    }
+
+    if (type === "answer") {
+      const description = payload as RTCSessionDescriptionInit;
+      await peer.pc.setRemoteDescription(description);
+      await this.flushCandidates(peer);
+      return;
+    }
+
+    if (type === "ice-candidate") {
       const candidate = payload as RTCIceCandidateInit | null;
       if (!candidate) return;
+      if (!peer.pc.remoteDescription) {
+        peer.pendingCandidates.push(candidate);
+        return;
+      }
       try {
         await peer.pc.addIceCandidate(candidate);
       } catch (err) {
@@ -124,19 +141,22 @@ export class PeerManager {
     const existing = this.peers.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({
+      iceServers: this.iceServers,
+      iceCandidatePoolSize: 10,
+    });
     const peer: PeerState = {
       pc,
       makingOffer: false,
       ignoreOffer: false,
       polite: this.selfId < peerId,
+      pendingCandidates: [],
     };
     this.peers.set(peerId, peer);
 
     this.localStream?.getAudioTracks().forEach((track) => {
       pc.addTrack(track, this.localStream as MediaStream);
     });
-    // peers joining mid-share must receive the screen, not the camera
     const videoTrack = this.videoOverride ?? this.localStream?.getVideoTracks()[0];
     if (videoTrack) {
       pc.addTrack(videoTrack, this.localStream ?? new MediaStream([videoTrack]));
@@ -157,12 +177,11 @@ export class PeerManager {
       if (!accumulator.getTracks().some((t) => t.id === event.track.id)) {
         accumulator.addTrack(event.track);
       }
-      // Fresh object so React re-attaches when the second track (audio/video) arrives.
       this.events.onRemoteStream(peerId, new MediaStream(accumulator.getTracks()));
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed") {
-        void pc.restartIce();
+        void this.makeOffer(peerId, peer);
       } else if (pc.connectionState === "closed") {
         this.events.onPeerConnectionLost(peerId);
       }
@@ -170,7 +189,20 @@ export class PeerManager {
     return peer;
   }
 
+  private async flushCandidates(peer: PeerState): Promise<void> {
+    if (!peer.pc.remoteDescription) return;
+    const pending = peer.pendingCandidates.splice(0);
+    for (const candidate of pending) {
+      try {
+        await peer.pc.addIceCandidate(candidate);
+      } catch {
+        // stale candidates after renegotiation — safe to ignore
+      }
+    }
+  }
+
   private async makeOffer(peerId: string, peer: PeerState): Promise<void> {
+    if (peer.makingOffer || peer.pc.signalingState !== "stable") return;
     try {
       peer.makingOffer = true;
       await peer.pc.setLocalDescription();

@@ -24,6 +24,7 @@ export class SignalingClient {
   private listeners = new Set<(message: SignalMessage) => void>();
   private shouldReconnect = true;
   private attempts = 0;
+  private outboundQueue: SignalMessage[] = [];
 
   constructor(private url: string) {}
 
@@ -31,6 +32,7 @@ export class SignalingClient {
     this.ws = new WebSocket(this.url);
     this.ws.onopen = () => {
       this.attempts = 0;
+      this.flushQueue();
     };
     this.ws.onmessage = (event) => {
       try {
@@ -51,6 +53,15 @@ export class SignalingClient {
   send(message: SignalMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
+      return;
+    }
+    this.outboundQueue.push(message);
+  }
+
+  private flushQueue(): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    while (this.outboundQueue.length > 0) {
+      this.ws.send(JSON.stringify(this.outboundQueue.shift()!));
     }
   }
 
@@ -61,6 +72,7 @@ export class SignalingClient {
 
   close(): void {
     this.shouldReconnect = false;
+    this.outboundQueue = [];
     this.ws?.close();
     this.ws = null;
     this.listeners.clear();

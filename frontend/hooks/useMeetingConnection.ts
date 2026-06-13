@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { SignalingClient, signalingUrl } from "@/lib/signaling";
 import { PeerManager } from "@/lib/webrtc/PeerManager";
+import { fetchIceServers } from "@/lib/webrtc/fetchIceServers";
 import type { ChatMessage, Participant } from "@/lib/types";
 
 export interface RemotePeer {
@@ -81,137 +82,147 @@ export function useMeetingConnection(
     if (!participant) return;
 
     let active = true;
-    api
-      .chatHistory(code)
-      .then((history) => {
-        if (active) setChatMessages((live) => mergeChat(history, live));
-      })
-      .catch(() => {
-        // history is best-effort; live messages still arrive over WS
+    let innerCleanup: (() => void) | undefined;
+
+    void (async () => {
+      const iceServers = await fetchIceServers();
+      if (!active) return;
+
+      api
+        .chatHistory(code)
+        .then((history) => {
+          if (active) setChatMessages((live) => mergeChat(history, live));
+        })
+        .catch(() => {
+          // history is best-effort; live messages still arrive over WS
+        });
+
+      const signaling = new SignalingClient(signalingUrl(code, participant.id));
+      const peerManager = new PeerManager(
+        participant.id,
+        localStreamRef.current,
+        (type, to, payload) => signaling.send({ type, to, payload }),
+        {
+          onRemoteStream: (peerId, stream) =>
+            setPeers((prev) =>
+              prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream } } : prev,
+            ),
+          onPeerConnectionLost: (peerId) =>
+            setPeers((prev) =>
+              prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream: null } } : prev,
+            ),
+        },
+        iceServers,
+      );
+      signalingRef.current = signaling;
+      peerManagerRef.current = peerManager;
+
+      const unsubscribe = signaling.onMessage((message) => {
+        switch (message.type) {
+          case "roster": {
+            const entries = (message.payload as { participants: RosterEntry[] }).participants;
+            setPeers(Object.fromEntries(entries.map((e) => [e.participant_id, toRemotePeer(e)])));
+            entries.forEach((entry) => void peerManager.connectTo(entry.participant_id));
+            break;
+          }
+          case "participant-joined": {
+            const entry = message.payload as RosterEntry;
+            setPeers((prev) => ({ ...prev, [entry.participant_id]: toRemotePeer(entry) }));
+            break;
+          }
+          case "participant-left": {
+            const { participant_id } = message.payload as { participant_id: string };
+            peerManager.removePeer(participant_id);
+            setPeers((prev) => {
+              const next = { ...prev };
+              delete next[participant_id];
+              return next;
+            });
+            break;
+          }
+          case "offer":
+          case "answer":
+          case "ice-candidate":
+            if (message.from) {
+              void peerManager.handleSignal(message.from, message.type, message.payload);
+            }
+            break;
+          case "chat": {
+            const incoming = message.payload as ChatMessage;
+            setChatMessages((prev) =>
+              prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
+            );
+            break;
+          }
+          case "reaction": {
+            if (!message.from) break;
+            const { emoji } = message.payload as { emoji: string };
+            const key = `${message.from}-${Date.now()}-${Math.random()}`;
+            setReactions((prev) => [...prev, { key, participantId: message.from as string, emoji }]);
+            setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 4000);
+            break;
+          }
+          case "raise-hand": {
+            if (!message.from) break;
+            const { raised } = message.payload as { raised: boolean };
+            setPeers((prev) =>
+              prev[message.from as string]
+                ? {
+                    ...prev,
+                    [message.from as string]: {
+                      ...prev[message.from as string],
+                      handRaised: raised,
+                    },
+                  }
+                : prev,
+            );
+            break;
+          }
+          case "force-mute":
+            handlersRef.current.onForceMute?.();
+            break;
+          case "removed":
+            handlersRef.current.onRemoved?.();
+            break;
+          case "meeting-ended":
+            handlersRef.current.onMeetingEnded?.();
+            break;
+          case "media-state": {
+            if (!message.from) break;
+            const { audio, video } = message.payload as { audio: boolean; video: boolean };
+            setPeers((prev) =>
+              prev[message.from as string]
+                ? {
+                    ...prev,
+                    [message.from as string]: {
+                      ...prev[message.from as string],
+                      audioEnabled: audio,
+                      videoEnabled: video,
+                    },
+                  }
+                : prev,
+            );
+            break;
+          }
+        }
       });
 
-    const signaling = new SignalingClient(signalingUrl(code, participant.id));
-    signalingRef.current = signaling;
+      signaling.connect();
 
-    const peerManager = new PeerManager(
-      participant.id,
-      localStreamRef.current,
-      (type, to, payload) => signaling.send({ type, to, payload }),
-      {
-        onRemoteStream: (peerId, stream) =>
-          setPeers((prev) =>
-            prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream } } : prev,
-          ),
-        onPeerConnectionLost: (peerId) =>
-          setPeers((prev) =>
-            prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream: null } } : prev,
-          ),
-      },
-    );
-    peerManagerRef.current = peerManager;
+      innerCleanup = () => {
+        unsubscribe();
+        peerManager.closeAll();
+        signaling.close();
+        signalingRef.current = null;
+        peerManagerRef.current = null;
+      };
 
-    const unsubscribe = signaling.onMessage((message) => {
-      switch (message.type) {
-        case "roster": {
-          const entries = (message.payload as { participants: RosterEntry[] }).participants;
-          setPeers(Object.fromEntries(entries.map((e) => [e.participant_id, toRemotePeer(e)])));
-          // the newcomer initiates offers toward everyone already present
-          entries.forEach((entry) => void peerManager.connectTo(entry.participant_id));
-          break;
-        }
-        case "participant-joined": {
-          const entry = message.payload as RosterEntry;
-          setPeers((prev) => ({ ...prev, [entry.participant_id]: toRemotePeer(entry) }));
-          // Existing peers also negotiate so a lost newcomer offer can still connect.
-          void peerManager.connectTo(entry.participant_id);
-          break;
-        }
-        case "participant-left": {
-          const { participant_id } = message.payload as { participant_id: string };
-          peerManager.removePeer(participant_id);
-          setPeers((prev) => {
-            const next = { ...prev };
-            delete next[participant_id];
-            return next;
-          });
-          break;
-        }
-        case "offer":
-        case "answer":
-        case "ice-candidate":
-          if (message.from) {
-            void peerManager.handleSignal(message.from, message.type, message.payload);
-          }
-          break;
-        case "chat": {
-          const incoming = message.payload as ChatMessage;
-          setChatMessages((prev) =>
-            prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
-          );
-          break;
-        }
-        case "reaction": {
-          if (!message.from) break;
-          const { emoji } = message.payload as { emoji: string };
-          const key = `${message.from}-${Date.now()}-${Math.random()}`;
-          setReactions((prev) => [...prev, { key, participantId: message.from as string, emoji }]);
-          setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 4000);
-          break;
-        }
-        case "raise-hand": {
-          if (!message.from) break;
-          const { raised } = message.payload as { raised: boolean };
-          setPeers((prev) =>
-            prev[message.from as string]
-              ? {
-                  ...prev,
-                  [message.from as string]: {
-                    ...prev[message.from as string],
-                    handRaised: raised,
-                  },
-                }
-              : prev,
-          );
-          break;
-        }
-        case "force-mute":
-          handlersRef.current.onForceMute?.();
-          break;
-        case "removed":
-          handlersRef.current.onRemoved?.();
-          break;
-        case "meeting-ended":
-          handlersRef.current.onMeetingEnded?.();
-          break;
-        case "media-state": {
-          if (!message.from) break;
-          const { audio, video } = message.payload as { audio: boolean; video: boolean };
-          setPeers((prev) =>
-            prev[message.from as string]
-              ? {
-                  ...prev,
-                  [message.from as string]: {
-                    ...prev[message.from as string],
-                    audioEnabled: audio,
-                    videoEnabled: video,
-                  },
-                }
-              : prev,
-          );
-          break;
-        }
-      }
-    });
-
-    signaling.connect();
+      if (!active) innerCleanup();
+    })();
 
     return () => {
       active = false;
-      unsubscribe();
-      peerManager.closeAll();
-      signaling.close();
-      signalingRef.current = null;
-      peerManagerRef.current = null;
+      innerCleanup?.();
       setPeers({});
       setChatMessages([]);
       setReactions([]);

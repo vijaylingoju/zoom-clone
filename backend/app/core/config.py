@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./zoom_clone.db"
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3010"]
     frontend_base_url: str = "http://localhost:3010"
+    metered_turn_api_key: str = ""
 
     @field_validator("cors_origins", mode="before")
     @classmethod
