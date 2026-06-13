@@ -1,65 +1,104 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-interface SpeakerSource {
+export interface SpeakerSource {
   id: string;
   stream: MediaStream | null;
+  /** Self preview — analyse only, never route to speakers. */
+  isSelf?: boolean;
 }
 
-const SPEAKING_THRESHOLD = 18; // 0–255 average; below this is treated as silence
+interface AudioNodes {
+  streamId: string;
+  source: MediaStreamAudioSourceNode;
+  analyser: AnalyserNode;
+  gain: GainNode | null;
+}
+
+const SPEAKING_THRESHOLD = 18;
 const POLL_MS = 250;
 
+function teardown(entry: AudioNodes): void {
+  entry.gain?.disconnect();
+  entry.analyser.disconnect();
+  entry.source.disconnect();
+}
+
 /**
- * Detects the loudest current speaker from a set of streams using the Web Audio
- * API (no server involvement). Returns the id of the active speaker, or null.
- * Muted participants have disabled audio tracks, so they read as silent.
+ * Active-speaker detection + remote audio playback through one AudioContext.
+ * createMediaStreamSource hijacks a stream on desktop Chrome; routing remote
+ * audio to destination here is required for laptop speakers to work.
  */
-export function useActiveSpeaker(sources: SpeakerSource[]): string | null {
+export function useActiveSpeaker(sources: SpeakerSource[]): {
+  activeId: string | null;
+  resumeAudio: () => void;
+} {
   const [activeId, setActiveId] = useState<string | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  const analysersRef = useRef<Map<string, { analyser: AnalyserNode; source: MediaStreamAudioSourceNode }>>(
-    new Map(),
-  );
+  const nodesRef = useRef<Map<string, AudioNodes>>(new Map());
 
-  // stable key of which ids currently have an audio-bearing stream
   const key = sources
     .filter((s) => s.stream && s.stream.getAudioTracks().length > 0)
-    .map((s) => s.id)
+    .map((s) => `${s.id}:${s.stream!.id}:${s.stream!.getAudioTracks().length}`)
     .sort()
     .join(",");
 
+  const resumeAudio = useCallback(() => {
+    const ctx = ctxRef.current;
+    if (ctx && ctx.state === "suspended") {
+      void ctx.resume();
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioCtor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtor) return;
 
     const ctx = ctxRef.current ?? new AudioCtor();
     ctxRef.current = ctx;
-    const analysers = analysersRef.current;
+    void ctx.resume();
 
-    const wanted = new Set(
-      sources.filter((s) => s.stream && s.stream.getAudioTracks().length > 0).map((s) => s.id),
-    );
+    const nodes = nodesRef.current;
+    const wanted = sources.filter((s) => s.stream && s.stream.getAudioTracks().length > 0);
 
-    // tear down analysers for streams that are gone
-    for (const [id, node] of analysers) {
-      if (!wanted.has(id)) {
-        node.source.disconnect();
-        analysers.delete(id);
+    for (const [id, entry] of nodes) {
+      const next = wanted.find((s) => s.id === id);
+      if (!next || next.stream!.id !== entry.streamId) {
+        teardown(entry);
+        nodes.delete(id);
       }
     }
-    // build analysers for new streams
-    for (const s of sources) {
-      if (!s.stream || s.stream.getAudioTracks().length === 0 || analysers.has(s.id)) continue;
+
+    for (const s of wanted) {
+      const stream = s.stream!;
+      const existing = nodes.get(s.id);
+      if (existing && existing.streamId === stream.id) continue;
+      if (existing) {
+        teardown(existing);
+        nodes.delete(s.id);
+      }
+
       try {
-        const source = ctx.createMediaStreamSource(s.stream);
+        const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
         source.connect(analyser);
-        analysers.set(s.id, { analyser, source });
+
+        let gain: GainNode | null = null;
+        if (!s.isSelf) {
+          gain = ctx.createGain();
+          gain.gain.value = 1;
+          source.connect(gain);
+          gain.connect(ctx.destination);
+        }
+
+        nodes.set(s.id, { streamId: stream.id, source, analyser, gain });
       } catch {
-        // a stream may not be connectable (e.g. no live audio yet); skip
+        // stream may not be connectable yet
       }
     }
 
@@ -67,7 +106,7 @@ export function useActiveSpeaker(sources: SpeakerSource[]): string | null {
     const timer = setInterval(() => {
       let loudestId: string | null = null;
       let loudest = SPEAKING_THRESHOLD;
-      for (const [id, { analyser }] of analysers) {
+      for (const [id, { analyser }] of nodes) {
         analyser.getByteFrequencyData(buffer);
         let sum = 0;
         for (let i = 0; i < buffer.length; i++) sum += buffer[i];
@@ -77,7 +116,6 @@ export function useActiveSpeaker(sources: SpeakerSource[]): string | null {
           loudestId = id;
         }
       }
-      // keep the previous speaker until someone else is clearly louder
       setActiveId((prev) => loudestId ?? prev);
     }, POLL_MS);
 
@@ -86,11 +124,12 @@ export function useActiveSpeaker(sources: SpeakerSource[]): string | null {
 
   useEffect(() => {
     return () => {
+      for (const entry of nodesRef.current.values()) teardown(entry);
+      nodesRef.current.clear();
       ctxRef.current?.close().catch(() => {});
       ctxRef.current = null;
-      analysersRef.current.clear();
     };
   }, []);
 
-  return activeId;
+  return { activeId, resumeAudio };
 }

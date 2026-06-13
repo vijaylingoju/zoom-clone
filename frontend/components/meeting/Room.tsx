@@ -91,9 +91,12 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     onMeetingEnded: onEnded,
   });
 
-  const activeSpeaker = useActiveSpeaker(
+  const { activeId: activeSpeaker, resumeAudio } = useActiveSpeaker(
     useMemo(
-      () => [{ id: participant.id, stream: media.stream }, ...peers.map((p) => ({ id: p.id, stream: p.stream }))],
+      () => [
+        { id: participant.id, stream: media.stream, isSelf: true },
+        ...peers.map((p) => ({ id: p.id, stream: p.stream, isSelf: false })),
+      ],
       [participant.id, media.stream, peers],
     ),
   );
@@ -133,10 +136,11 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const chromeShown = chromeVisible || panelOpen || menuOpen;
 
   const poke = useCallback(() => {
+    resumeAudio();
     setChromeVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => setChromeVisible(false), CHROME_HIDE_MS);
-  }, []);
+  }, [resumeAudio]);
 
   useEffect(() => {
     poke();
@@ -178,6 +182,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   }, [chatMessages.length]);
 
   function toggleAudio() {
+    resumeAudio();
     media.toggleAudio();
     sendMediaState(!media.audioEnabled, media.videoEnabled);
   }
@@ -232,6 +237,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   // On mount (WS connected), broadcast actual media state so other participants
   // see the correct audio/video status immediately (fixes: "joined without mic/camera")
   useEffect(() => {
+    resumeAudio();
     const timer = setTimeout(() => {
       sendMediaState(media.audioEnabled, media.videoEnabled);
     }, 1000); // slight delay to ensure WS is fully open and roster handshake done

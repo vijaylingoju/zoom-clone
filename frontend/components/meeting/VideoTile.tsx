@@ -43,7 +43,6 @@ export function VideoTile({
   compact,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const showVideo = stream !== null && !videoOff && stream.getVideoTracks().length > 0;
   const mirrored = mirror ?? isSelf;
 
@@ -53,31 +52,12 @@ export function VideoTile({
     }
   }, [stream, showVideo]);
 
-  // Remote audio always uses a dedicated element — video-only tiles were silent.
-  useEffect(() => {
-    if (isSelf || !stream) return;
-
-    const play = () => {
-      const el = audioRef.current;
-      if (!el) return;
-      el.srcObject = stream;
-      void el.play().catch(() => {
-        // autoplay may need a prior user gesture; join click usually satisfies this
-      });
-    };
-
-    play();
-    stream.addEventListener("addtrack", play);
-    return () => stream.removeEventListener("addtrack", play);
-  }, [stream, isSelf]);
-
   return (
     <div
       className={`relative w-full overflow-hidden bg-room-panel ring-2 transition-[box-shadow] ${
         compact ? "h-full min-h-[140px] rounded-lg" : "aspect-video rounded-xl"
       } ${active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"}`}
     >
-      {!isSelf && stream && <audio ref={audioRef} autoPlay playsInline className="sr-only" />}
       {showVideo ? (
         <video
           ref={videoRef}
