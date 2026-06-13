@@ -1,3 +1,5 @@
+import { getBackendUrl } from "./backendUrl";
+
 export interface SignalMessage {
   type: string;
   from?: string;
@@ -5,25 +7,7 @@ export interface SignalMessage {
   payload?: unknown;
 }
 
-const getApiUrl = () => {
-  if (typeof window !== "undefined") {
-    const hostname = window.location.hostname;
-    const configuredUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (configuredUrl) {
-      try {
-        const url = new URL(configuredUrl);
-        url.hostname = hostname;
-        return url.origin;
-      } catch {
-        // fallback
-      }
-    }
-    return `http://${hostname}:8010`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
-};
-
-const API_URL = getApiUrl();
+const API_URL = getBackendUrl();
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 export function signalingUrl(code: string, participantId: string): string {
