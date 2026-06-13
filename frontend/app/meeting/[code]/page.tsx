@@ -74,8 +74,13 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
 
   const [stage, setStage] = useState<Stage>(isCreator ? "permission" : "name");
   const [participant, setParticipant] = useState<Participant | null>(null);
+  // Guests: only restore their own previously-typed guest name, never the host's account name.
+  // If the user is a creator (host), their name comes from /api/me, not from sessionStorage.
   const [guestName, setGuestName] = useState(
-    () => (typeof window === "undefined" ? "" : (sessionStorage.getItem("zc_display_name") ?? "")),
+    () =>
+      isCreator
+        ? ""
+        : (typeof window === "undefined" ? "" : (sessionStorage.getItem("zc_display_name") ?? "")),
   );
   const [passcode, setPasscode] = useState(() => urlParam("pwd") ?? "");
   const [joinError, setJoinError] = useState<string | null>(null);

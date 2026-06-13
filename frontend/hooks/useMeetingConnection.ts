@@ -13,7 +13,14 @@ export interface RemotePeer {
   role: string;
   audioEnabled: boolean;
   videoEnabled: boolean;
+  handRaised: boolean;
   stream: MediaStream | null;
+}
+
+export interface FloatingReaction {
+  key: string;
+  participantId: string;
+  emoji: string;
 }
 
 interface RosterEntry {
@@ -22,6 +29,7 @@ interface RosterEntry {
   role: string;
   is_muted: boolean;
   is_video_off: boolean;
+  hand_raised?: boolean;
 }
 
 function mergeChat(history: ChatMessage[], live: ChatMessage[]): ChatMessage[] {
@@ -36,6 +44,7 @@ function toRemotePeer(entry: RosterEntry): RemotePeer {
     role: entry.role,
     audioEnabled: !entry.is_muted,
     videoEnabled: !entry.is_video_off,
+    handRaised: Boolean(entry.hand_raised),
     stream: null,
   };
 }
@@ -61,6 +70,7 @@ export function useMeetingConnection(
   handlersRef.current = handlers;
   const [peers, setPeers] = useState<Record<string, RemotePeer>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerManagerRef = useRef<PeerManager | null>(null);
   // Ref, not dep: a late-arriving stream must not tear down the connection
@@ -138,6 +148,30 @@ export function useMeetingConnection(
           );
           break;
         }
+        case "reaction": {
+          if (!message.from) break;
+          const { emoji } = message.payload as { emoji: string };
+          const key = `${message.from}-${Date.now()}-${Math.random()}`;
+          setReactions((prev) => [...prev, { key, participantId: message.from as string, emoji }]);
+          setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 4000);
+          break;
+        }
+        case "raise-hand": {
+          if (!message.from) break;
+          const { raised } = message.payload as { raised: boolean };
+          setPeers((prev) =>
+            prev[message.from as string]
+              ? {
+                  ...prev,
+                  [message.from as string]: {
+                    ...prev[message.from as string],
+                    handRaised: raised,
+                  },
+                }
+              : prev,
+          );
+          break;
+        }
         case "force-mute":
           handlersRef.current.onForceMute?.();
           break;
@@ -178,6 +212,7 @@ export function useMeetingConnection(
       peerManagerRef.current = null;
       setPeers({});
       setChatMessages([]);
+      setReactions([]);
     };
   }, [code, participant]);
 
@@ -208,12 +243,28 @@ export function useMeetingConnection(
     signalingRef.current?.send({ type: "end-meeting" });
   }, []);
 
+  const sendReaction = useCallback((emoji: string) => {
+    signalingRef.current?.send({ type: "reaction", payload: { emoji } });
+  }, []);
+
+  const setHandRaised = useCallback((raised: boolean) => {
+    signalingRef.current?.send({ type: "raise-hand", payload: { raised } });
+  }, []);
+
+  const replaceTrack = useCallback(async (track: MediaStreamTrack) => {
+    await peerManagerRef.current?.replaceLocalTrack(track);
+  }, []);
+
   return {
     peers: Object.values(peers),
     chatMessages,
+    reactions,
     sendMediaState,
     sendChat,
     setVideoOverride,
+    replaceTrack,
+    sendReaction,
+    setHandRaised,
     muteAll,
     removeParticipant,
     endMeetingForAll,

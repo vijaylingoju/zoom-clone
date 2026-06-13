@@ -50,6 +50,23 @@ export class PeerManager {
     }
   }
 
+  /**
+   * Swap a local mic/camera track for every peer after a device change.
+   * Replaces the matching-kind sender so the change is seamless (no renegotiation).
+   */
+  async replaceLocalTrack(track: MediaStreamTrack): Promise<void> {
+    // don't clobber an active screen share with a camera device switch
+    if (track.kind === "video" && this.videoOverride) return;
+    for (const peer of this.peers.values()) {
+      const sender = peer.pc.getSenders().find((s) => s.track?.kind === track.kind);
+      if (sender) {
+        await sender.replaceTrack(track);
+      } else {
+        peer.pc.addTrack(track, this.localStream ?? new MediaStream([track]));
+      }
+    }
+  }
+
   /** Called by the newcomer for every peer already in the room. */
   async connectTo(peerId: string): Promise<void> {
     this.getOrCreate(peerId);

@@ -24,6 +24,7 @@ def _participant_info(participant: MeetingParticipant) -> ParticipantInfo:
         "role": participant.role.value,
         "is_muted": participant.is_muted,
         "is_video_off": participant.is_video_off,
+        "hand_raised": False,
     }
 
 
@@ -84,11 +85,12 @@ async def meeting_signaling(ws: WebSocket, code: str, participant_id: str) -> No
         pass
     finally:
         room_manager.remove(code, participant_id)
-        await _mark_left(code, participant_id)
+        # Broadcast FIRST so all clients update instantly, then persist to DB
         await room_manager.broadcast(
             code,
             {"type": "participant-left", "payload": {"participant_id": participant_id}},
         )
+        await _mark_left(code, participant_id)
 
 
 async def _handle(code: str, sender_id: str, message: dict[str, Any]) -> None:
@@ -112,6 +114,23 @@ async def _handle(code: str, sender_id: str, message: dict[str, Any]) -> None:
             code,
             {"type": "media-state", "from": sender_id, "payload": {"audio": audio, "video": video}},
             exclude=sender_id,
+        )
+        return
+
+    if msg_type == "reaction" and isinstance(payload, dict):
+        emoji = str(payload.get("emoji", ""))[:8]
+        if emoji:
+            await room_manager.broadcast(
+                code, {"type": "reaction", "from": sender_id, "payload": {"emoji": emoji}}
+            )
+        return
+
+    if msg_type == "raise-hand" and isinstance(payload, dict):
+        raised = bool(payload.get("raised"))
+        room_manager.update_info(code, sender_id, hand_raised=raised)
+        await room_manager.broadcast(
+            code,
+            {"type": "raise-hand", "from": sender_id, "payload": {"raised": raised}},
         )
         return
 

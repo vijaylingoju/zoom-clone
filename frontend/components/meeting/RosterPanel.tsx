@@ -9,6 +9,7 @@ interface RosterEntry {
   role: string;
   audioEnabled: boolean;
   videoEnabled: boolean;
+  handRaised?: boolean;
   isSelf?: boolean;
 }
 
@@ -90,6 +91,7 @@ export function RosterPanel({
               </button>
             )}
             <span className="flex items-center gap-2 text-white/60">
+              {entry.handRaised && <span className="text-sm">✋</span>}
               {entry.audioEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
               {entry.videoEnabled ? <Video size={14} /> : <VideoOff size={14} className="text-red-400" />}
             </span>
