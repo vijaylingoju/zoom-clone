@@ -19,7 +19,8 @@ export interface LocalMedia {
   /** Join without devices (Zoom's "Continue without microphone and camera"). */
   skip: () => void;
   toggleAudio: () => void;
-  toggleVideo: () => void;
+  /** Stop/start camera hardware; returns new video track or null when off. */
+  toggleVideo: () => Promise<MediaStreamTrack | null>;
   /** Switch mic/camera; returns the new track so peers can replaceTrack. */
   switchDevice: (kind: "audio" | "video", deviceId: string) => Promise<MediaStreamTrack | null>;
   stop: () => void;
@@ -102,14 +103,44 @@ export function useLocalMedia(): LocalMedia {
     setAudioEnabled(next);
   }, []);
 
-  const toggleVideo = useCallback(() => {
-    const tracks = streamRef.current?.getVideoTracks() ?? [];
-    const next = !tracks.some((track) => track.enabled);
-    tracks.forEach((track) => {
-      track.enabled = next;
-    });
-    setVideoEnabled(next);
-  }, []);
+  const toggleVideo = useCallback(async (): Promise<MediaStreamTrack | null> => {
+    const current = streamRef.current;
+    if (!current) return null;
+
+    const videoTracks = current.getVideoTracks();
+    if (videoTracks.length > 0) {
+      videoTracks.forEach((track) => {
+        current.removeTrack(track);
+        track.stop();
+      });
+      setVideoEnabled(false);
+      const next = new MediaStream(current.getTracks());
+      streamRef.current = next;
+      setStream(next);
+      return null;
+    }
+
+    try {
+      const constraints: MediaStreamConstraints = currentVideoId
+        ? { video: { deviceId: { exact: currentVideoId } } }
+        : { video: true };
+      const fresh = await navigator.mediaDevices.getUserMedia(constraints);
+      fresh.getAudioTracks().forEach((t) => t.stop());
+      const newTrack = fresh.getVideoTracks()[0];
+      if (!newTrack) return null;
+
+      current.addTrack(newTrack);
+      setVideoEnabled(true);
+      setCurrentVideoId(newTrack.getSettings().deviceId ?? currentVideoId);
+      const next = new MediaStream(current.getTracks());
+      streamRef.current = next;
+      setStream(next);
+      return newTrack;
+    } catch {
+      setVideoEnabled(false);
+      return null;
+    }
+  }, [currentVideoId]);
 
   const switchDevice = useCallback(
     async (kind: "audio" | "video", deviceId: string): Promise<MediaStreamTrack | null> => {

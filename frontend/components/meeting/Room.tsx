@@ -36,14 +36,30 @@ interface Tile {
   handRaised: boolean;
 }
 
-function galleryColumns(count: number, mobile: boolean): string {
-  if (mobile) return "grid-cols-2";
+function galleryColumns(count: number): string {
   if (count <= 1) return "grid-cols-1";
-  if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
-  return "grid-cols-2 lg:grid-cols-3";
+  if (count <= 2) return "grid-cols-1 sm:grid-cols-2";
+  if (count <= 4) return "grid-cols-2";
+  if (count <= 9) return "grid-cols-2 lg:grid-cols-3";
+  return "grid-cols-2 md:grid-cols-3 xl:grid-cols-4";
 }
 
-const MOBILE_PAGE_SIZE = 4;
+function isScreenShareTile(tile: Tile, screenStream: MediaStream | null): boolean {
+  if (tile.isSelf && screenStream) return true;
+  return (
+    tile.stream?.getVideoTracks().some((track) => {
+      const label = track.label.toLowerCase();
+      return label.includes("screen") || label.includes("window") || label.includes("display");
+    }) ?? false
+  );
+}
+
+interface TileRenderOptions {
+  compact?: boolean;
+  fill?: boolean;
+  objectFit?: "cover" | "contain";
+  showPinControl?: boolean;
+}
 const CHROME_HIDE_MS = 3500;
 
 export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }: RoomProps) {
@@ -60,7 +76,6 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mobilePage, setMobilePage] = useState(0);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevMessageCountRef = useRef(0);
@@ -203,9 +218,10 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     sendMediaState(!media.audioEnabled, media.videoEnabled);
   }
 
-  function toggleVideo() {
-    media.toggleVideo();
-    sendMediaState(media.audioEnabled, !media.videoEnabled);
+  async function toggleVideo() {
+    const track = await media.toggleVideo();
+    await replaceTrack(track, "video");
+    sendMediaState(media.audioEnabled, track !== null);
   }
 
   function toggleHand() {
@@ -289,14 +305,27 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
 
   const mediaUnavailable = media.permission !== "granted";
 
-  function renderTile(tile: Tile, className: string, compact?: boolean) {
+  const togglePin = useCallback(
+    (id: string) => {
+      setPinnedId((cur) => (cur === id ? null : id));
+      if (!isMobile && viewMode === "gallery") setViewMode("speaker");
+    },
+    [isMobile, viewMode],
+  );
+
+  useEffect(() => {
+    if (pinnedId && !tiles.some((tile) => tile.id === pinnedId)) {
+      setPinnedId(null);
+    }
+  }, [pinnedId, tiles]);
+
+  function renderTile(tile: Tile, className: string, options: TileRenderOptions = {}) {
+    const { compact, fill, objectFit, showPinControl } = options;
+    const pinned = pinnedId === tile.id;
+    const fit = objectFit ?? (isScreenShareTile(tile, screenStream) ? "contain" : "cover");
+
     return (
-      <div
-        key={tile.id}
-        className={className}
-        onDoubleClick={() => !isMobile && setPinnedId((cur) => (cur === tile.id ? null : tile.id))}
-        title={isMobile ? undefined : "Double-click to pin / unpin"}
-      >
+      <div key={tile.id} className={className}>
         <VideoTile
           stream={tile.stream}
           name={tile.name}
@@ -305,9 +334,14 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           isSelf={tile.isSelf}
           mirror={tile.mirror}
           active={tile.id === activeSpeaker}
+          pinned={pinned}
           handRaised={tile.handRaised}
           reactions={reactionsByTile[tile.id]}
           compact={compact}
+          fill={fill}
+          objectFit={fit}
+          showPinControl={showPinControl}
+          onPinToggle={showPinControl ? () => togglePin(tile.id) : undefined}
         />
       </div>
     );
@@ -318,13 +352,57 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const mainTile = tiles.find((t) => t.id === mainId) ?? visible[0];
   const filmstrip = visible.filter((t) => t.id !== mainTile?.id);
 
-  const mobilePages = Math.max(1, Math.ceil(visible.length / MOBILE_PAGE_SIZE));
-  const mobilePageTiles = visible.slice(
-    mobilePage * MOBILE_PAGE_SIZE,
-    mobilePage * MOBILE_PAGE_SIZE + MOBILE_PAGE_SIZE,
+  const useGallery = !isMobile && (viewMode === "gallery" || tileCount === 1);
+
+  const mobileSpeakerView = (
+    <div className="flex h-full w-full min-h-0 flex-col">
+      {mainTile && (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          {renderTile(mainTile, "h-full w-full max-h-full max-w-full", {
+            fill: true,
+            showPinControl: true,
+            objectFit: isScreenShareTile(mainTile, screenStream) ? "contain" : "cover",
+          })}
+        </div>
+      )}
+      {filmstrip.length > 0 && (
+        <div className="flex h-[clamp(5.5rem,22vh,7.5rem)] shrink-0 gap-2 overflow-x-auto px-2 pb-2 pt-1 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
+          {filmstrip.map((tile) =>
+            renderTile(tile, "h-full w-[clamp(6.5rem,28vw,9rem)] shrink-0 snap-start", {
+              compact: true,
+              fill: true,
+              showPinControl: true,
+            }),
+          )}
+        </div>
+      )}
+    </div>
   );
 
-  const useGallery = isMobile || viewMode === "gallery" || tileCount === 1;
+  const desktopSpeakerView = (
+    <div className="flex h-full w-full min-h-0 flex-col gap-2 sm:gap-3">
+      {mainTile && (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          {renderTile(mainTile, "h-full w-full max-h-full max-w-full", {
+            fill: true,
+            showPinControl: true,
+            objectFit: isScreenShareTile(mainTile, screenStream) ? "contain" : "cover",
+          })}
+        </div>
+      )}
+      {filmstrip.length > 0 && (
+        <div className="flex h-[clamp(6rem,14vh,8.5rem)] shrink-0 justify-start gap-2 overflow-x-auto px-1 pb-1 sm:gap-3">
+          {filmstrip.map((tile) =>
+            renderTile(tile, "h-full w-[clamp(8rem,12vw,13rem)] shrink-0", {
+              compact: true,
+              fill: true,
+              showPinControl: true,
+            }),
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex h-screen flex-col bg-room-bg">
@@ -380,42 +458,24 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
             </div>
           )}
 
-          {useGallery ? (
-            <div className="flex h-full w-full flex-col">
-              <div className={`grid h-full w-full flex-1 gap-1 sm:gap-3 ${galleryColumns(visible.length, isMobile)}`}>
-                {(isMobile ? mobilePageTiles : visible).map((tile) =>
-                  renderTile(tile, isMobile ? "min-h-0" : "", isMobile),
-                )}
-              </div>
-              {isMobile && mobilePages > 1 && (
-                <div className="flex shrink-0 justify-center gap-2 py-3">
-                  {Array.from({ length: mobilePages }, (_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      aria-label={`Page ${i + 1}`}
-                      onClick={() => setMobilePage(i)}
-                      className={`h-2 w-2 rounded-full transition ${
-                        i === mobilePage ? "bg-white" : "bg-white/30"
-                      }`}
-                    />
-                  ))}
+          {isMobile ? (
+            mobileSpeakerView
+          ) : useGallery ? (
+            <div
+              className={`grid h-full w-full auto-rows-fr gap-1 sm:gap-2 ${galleryColumns(visible.length)}`}
+            >
+              {visible.map((tile) => (
+                <div key={tile.id} className="min-h-0 min-w-0">
+                  {renderTile(tile, "h-full w-full", {
+                    fill: true,
+                    compact: visible.length > 4,
+                    showPinControl: true,
+                  })}
                 </div>
-              )}
+              ))}
             </div>
           ) : (
-            <div className="flex h-full w-full flex-col gap-3">
-              {mainTile && (
-                <div className="flex min-h-0 flex-1 items-center justify-center">
-                  {renderTile(mainTile, "h-full w-full max-w-5xl")}
-                </div>
-              )}
-              {filmstrip.length > 0 && (
-                <div className="flex shrink-0 justify-center gap-3 overflow-x-auto pb-1">
-                  {filmstrip.map((tile) => renderTile(tile, "w-44 shrink-0 sm:w-52"))}
-                </div>
-              )}
-            </div>
+            desktopSpeakerView
           )}
 
           {/* Mobile: floating Lower Hand pill */}

@@ -40,6 +40,18 @@ export class PeerManager {
   ) {}
 
   /**
+   * Find the outbound sender for a media kind. After replaceTrack(null) the
+   * sender still exists but track is null — match by excluding the other kind.
+   */
+  private findSender(pc: RTCPeerConnection, kind: "audio" | "video"): RTCRtpSender | undefined {
+    const byKind = pc.getSenders().find((s) => s.track?.kind === kind);
+    if (byKind) return byKind;
+    if (kind !== "video") return undefined;
+    const audioSender = pc.getSenders().find((s) => s.track?.kind === "audio");
+    return pc.getSenders().find((s) => s !== audioSender && s.track === null);
+  }
+
+  /**
    * Swap the outgoing video for every peer (screen share on / off).
    * Uses RTCRtpSender.replaceTrack — no renegotiation when a video sender
    * already exists; falls back to addTrack (renegotiates) when it doesn't.
@@ -48,7 +60,7 @@ export class PeerManager {
     this.videoOverride = track;
     const target = track ?? this.localStream?.getVideoTracks()[0] ?? null;
     for (const [peerId, peer] of this.peers) {
-      const sender = peer.pc.getSenders().find((s) => s.track?.kind === "video");
+      const sender = this.findSender(peer.pc, "video");
       if (sender) {
         await sender.replaceTrack(target);
       } else if (target) {
@@ -58,16 +70,21 @@ export class PeerManager {
   }
 
   /**
-   * Swap a local mic/camera track for every peer after a device change.
-   * Replaces the matching-kind sender so the change is seamless (no renegotiation).
+   * Swap or clear a local track for every peer (null stops sending that kind).
    */
-  async replaceLocalTrack(track: MediaStreamTrack): Promise<void> {
-    if (track.kind === "video" && this.videoOverride) return;
-    for (const [peerId, peer] of this.peers) {
-      const sender = peer.pc.getSenders().find((s) => s.track?.kind === track.kind);
+  async replaceLocalTrack(
+    track: MediaStreamTrack | null,
+    kind?: "audio" | "video",
+  ): Promise<void> {
+    const trackKind = (track?.kind ?? kind) as "audio" | "video" | undefined;
+    if (!trackKind) return;
+    if (trackKind === "video" && this.videoOverride) return;
+
+    for (const [, peer] of this.peers) {
+      const sender = this.findSender(peer.pc, trackKind);
       if (sender) {
         await sender.replaceTrack(track);
-      } else {
+      } else if (track) {
         peer.pc.addTrack(track, this.localStream ?? new MediaStream([track]));
       }
     }

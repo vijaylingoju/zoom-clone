@@ -1,6 +1,6 @@
 "use client";
 
-import { Hand, MicOff } from "lucide-react";
+import { Hand, MicOff, Pin, PinOff } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { resumeRemoteAudio } from "@/lib/remoteAudio";
@@ -16,11 +16,19 @@ interface VideoTileProps {
   mirror?: boolean;
   /** Green ring when this participant is the active speaker. */
   active?: boolean;
+  /** Pinned as the main speaker (speaker view). */
+  pinned?: boolean;
   handRaised?: boolean;
   /** Floating reaction emojis currently playing on this tile. */
   reactions?: { key: string; emoji: string }[];
-  /** Mobile: fill grid cell, show large centered name when video off. */
+  /** Filmstrip / gallery cell — smaller tile with large name when video off. */
   compact?: boolean;
+  /** Fill parent instead of locking 16:9 (main stage / gallery cells). */
+  fill?: boolean;
+  objectFit?: "cover" | "contain";
+  /** Show pin / unpin control on this tile. */
+  showPinControl?: boolean;
+  onPinToggle?: () => void;
 }
 
 function initials(name: string): string {
@@ -40,9 +48,14 @@ export function VideoTile({
   isSelf,
   mirror,
   active,
+  pinned,
   handRaised,
   reactions = [],
   compact,
+  fill,
+  objectFit = "cover",
+  showPinControl,
+  onPinToggle,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -85,11 +98,17 @@ export function VideoTile({
     return () => stream.removeEventListener("addtrack", attach);
   }, [stream, isSelf, showVideo]);
 
+  const shellClass = fill
+    ? "h-full min-h-0 w-full rounded-xl"
+    : compact
+      ? "h-full min-h-[88px] w-full rounded-lg"
+      : "aspect-video w-full rounded-xl";
+
   return (
     <div
-      className={`relative w-full overflow-hidden bg-room-panel ring-2 transition-[box-shadow] ${
-        compact ? "h-full min-h-[140px] rounded-lg" : "aspect-video rounded-xl"
-      } ${active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"}`}
+      className={`relative overflow-hidden bg-room-panel ring-2 transition-[box-shadow] ${shellClass} ${
+        pinned ? "ring-[#4B9CFF]" : active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"
+      }`}
     >
       {hasRemoteAudio && !showVideo && (
         <audio ref={audioRef} data-remote-audio autoPlay playsInline className="hidden" />
@@ -101,7 +120,7 @@ export function VideoTile({
           playsInline
           muted={isSelf}
           data-remote-video={isSelf ? undefined : ""}
-          className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""}`}
+          className={`h-full w-full ${objectFit === "contain" ? "object-contain" : "object-cover"} ${mirrored ? "-scale-x-100" : ""}`}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
@@ -120,7 +139,7 @@ export function VideoTile({
           className={`absolute flex items-center justify-center text-black shadow ${
             compact
               ? "left-1/2 top-3 -translate-x-1/2 text-2xl"
-              : "right-2 top-2 h-7 w-7 rounded-full bg-yellow-400"
+              : "left-2 top-10 h-7 w-7 rounded-full bg-yellow-400"
           }`}
         >
           {compact ? "✋" : <Hand size={15} />}
@@ -135,11 +154,35 @@ export function VideoTile({
         ))}
       </div>
 
-      {active && (
+      {pinned && (
+        <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-[#4B9CFF]/90 px-2 py-0.5">
+          <Pin size={10} className="text-white" />
+          <span className="text-[10px] font-semibold text-white">Pinned</span>
+        </div>
+      )}
+
+      {active && !pinned && (
         <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-[#23D959]/90 px-2 py-0.5">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
           <span className="text-[10px] font-semibold text-white">Speaking</span>
         </div>
+      )}
+
+      {showPinControl && onPinToggle && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPinToggle();
+          }}
+          className={`absolute right-2 top-2 z-10 flex items-center justify-center rounded-full text-white shadow ${
+            compact ? "h-6 w-6" : "h-7 w-7"
+          } ${pinned ? "bg-[#4B9CFF] hover:bg-[#3a8ae8]" : "bg-black/60 hover:bg-black/80"}`}
+          aria-label={pinned ? "Unpin participant" : "Pin participant"}
+          title={pinned ? "Unpin" : "Pin"}
+        >
+          {pinned ? <PinOff size={compact ? 12 : 14} /> : <Pin size={compact ? 12 : 14} />}
+        </button>
       )}
 
       <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded bg-black/60 px-2 py-1 text-xs text-white">

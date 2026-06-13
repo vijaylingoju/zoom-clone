@@ -317,9 +317,12 @@ export function useMeetingConnection(
     signalingRef.current?.send({ type: "raise-hand", payload: { raised } });
   }, []);
 
-  const replaceTrack = useCallback(async (track: MediaStreamTrack) => {
-    await peerManagerRef.current?.replaceLocalTrack(track);
-  }, []);
+  const replaceTrack = useCallback(
+    async (track: MediaStreamTrack | null, kind?: "audio" | "video") => {
+      await peerManagerRef.current?.replaceLocalTrack(track, kind);
+    },
+    [],
+  );
 
   const pollAudioLevels = useCallback(async () => {
     return (await peerManagerRef.current?.getInboundAudioLevels()) ?? new Map<string, number>();

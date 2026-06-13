@@ -95,11 +95,11 @@ export function Lobby({ meeting, media, defaultName, joining, joinError, onJoin 
           />
           <RoundToggle
             active={media.videoEnabled}
-            onClick={media.toggleVideo}
+            onClick={() => void media.toggleVideo()}
             onIcon={<Video size={20} />}
             offIcon={<VideoOff size={20} />}
             label={media.videoEnabled ? "Stop video" : "Start video"}
-            disabled={!mediaAvailable || !media.hasVideoTrack}
+            disabled={!mediaAvailable}
           />
         </div>
 
