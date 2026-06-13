@@ -1,15 +1,9 @@
 "use client";
 
-import {
-  Ellipsis,
-  House,
-  MessagesSquare,
-  Settings,
-  Video,
-} from "lucide-react";
+import { Ellipsis, House, MessagesSquare, Settings, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const TABS = [
   { href: "/", label: "Home", icon: House },
@@ -26,17 +20,28 @@ function tabClasses(active: boolean): string {
 export function Sidebar() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(event: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   return (
-    <nav className="flex w-21 shrink-0 flex-col items-center justify-between bg-white py-2">
-      <div className="flex flex-col items-center gap-1">
+    <nav className="flex shrink-0 items-center border-t border-black/10 bg-white md:w-20 md:flex-col md:items-center md:justify-between md:border-t-0 md:py-2">
+      <div className="flex flex-1 items-center justify-around md:flex-none md:flex-col md:gap-1 md:self-stretch">
         {TABS.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={tabClasses(pathname === href)}>
             <Icon size={20} strokeWidth={1.7} />
             {label}
           </Link>
         ))}
-        <div className="relative">
+        <div className="relative" ref={moreRef}>
           <button
             type="button"
             onClick={() => setMoreOpen((open) => !open)}
@@ -46,7 +51,7 @@ export function Sidebar() {
             More
           </button>
           {moreOpen && (
-            <div className="absolute left-16 top-0 z-40 w-44 rounded-xl border border-black/10 bg-white p-2 shadow-xl">
+            <div className="absolute bottom-full left-1/2 z-40 mb-2 w-44 -translate-x-1/2 rounded-xl border border-black/10 bg-white p-2 shadow-xl md:bottom-auto md:left-16 md:top-0 md:translate-x-0">
               {["Docs", "Whiteboards", "Notes", "Apps"].map((label) => (
                 <button
                   key={label}
@@ -66,7 +71,7 @@ export function Sidebar() {
         type="button"
         aria-label="Settings"
         title="Not available in this demo"
-        className="rounded-lg p-2 text-ink-soft hover:bg-black/5"
+        className="hidden rounded-lg p-2 text-ink-soft hover:bg-black/5 md:block"
       >
         <Settings size={20} strokeWidth={1.7} />
       </button>

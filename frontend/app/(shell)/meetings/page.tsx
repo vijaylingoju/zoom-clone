@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { ChevronLeft, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { MeetingDetail } from "@/components/meetings/MeetingDetail";
@@ -71,9 +71,16 @@ export default function MeetingsPage() {
     pmiMeeting ??
     null;
 
+  // mobile is single-pane: the list, or the detail once the user taps a meeting
+  const showDetailOnMobile = selectedCode !== null;
+
   return (
     <div className="flex h-full">
-      <aside className="flex w-80 shrink-0 flex-col border-r border-black/10 bg-surface/50">
+      <aside
+        className={`${
+          showDetailOnMobile ? "hidden md:flex" : "flex"
+        } w-full shrink-0 flex-col border-r border-black/10 bg-surface/50 md:w-80`}
+      >
         <div className="flex items-center gap-2 px-3 py-2">
           <button
             type="button"
@@ -151,9 +158,23 @@ export default function MeetingsPage() {
         </button>
       </aside>
 
-      <section className="min-w-0 flex-1 overflow-y-auto">
+      <section
+        className={`${
+          showDetailOnMobile ? "flex" : "hidden md:flex"
+        } min-w-0 flex-1 flex-col overflow-y-auto`}
+      >
         {selected ? (
-          <MeetingDetail meeting={selected} />
+          <>
+            <button
+              type="button"
+              onClick={() => setSelectedCode(null)}
+              className="flex items-center gap-1 px-4 pt-4 text-sm font-medium text-zoom-blue md:hidden"
+            >
+              <ChevronLeft size={16} />
+              Back to meetings
+            </button>
+            <MeetingDetail meeting={selected} />
+          </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-ink-soft">
             Select a meeting to see its details

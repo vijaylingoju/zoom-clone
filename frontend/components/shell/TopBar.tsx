@@ -90,14 +90,14 @@ export function TopBar() {
   const [avatarOpen, setAvatarOpen] = useState(false);
 
   return (
-    <header className="flex h-13 items-center justify-between bg-white px-4 py-2">
-      <div className="flex items-baseline gap-1 leading-none">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 bg-white px-3 py-2 sm:px-4">
+      <div className="flex shrink-0 items-baseline gap-1 leading-none">
         <span className="text-sm font-bold lowercase text-zoom-blue">zoom</span>
-        <span className="text-base font-semibold text-ink">Workplace</span>
+        <span className="hidden text-base font-semibold text-ink sm:inline">Workplace</span>
       </div>
 
-      <div className="flex flex-1 items-center justify-center gap-2 px-6">
-        <div className="relative flex items-center gap-1 text-ink-soft">
+      <div className="flex flex-1 items-center justify-center gap-2 sm:px-6">
+        <div className="relative hidden items-center gap-1 text-ink-soft sm:flex">
           <span className="rounded p-1 opacity-40">
             <ChevronLeft size={16} />
           </span>
@@ -126,11 +126,11 @@ export function TopBar() {
         </button>
       </div>
 
-      <div className="relative flex items-center gap-3">
+      <div className="relative flex shrink-0 items-center gap-3">
         <button
           type="button"
           title="Not available in this demo"
-          className="rounded-lg bg-zoom-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-zoom-blue-hover"
+          className="hidden rounded-lg bg-zoom-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-zoom-blue-hover sm:block"
         >
           Upgrade to Pro
         </button>

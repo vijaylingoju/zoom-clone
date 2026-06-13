@@ -67,7 +67,7 @@ export function HomeActions() {
   });
 
   return (
-    <div className="flex items-start justify-center gap-10">
+    <div className="flex items-start justify-center gap-6 sm:gap-10">
       <div className="relative" ref={menuRef}>
         <Action
           label="New meeting"

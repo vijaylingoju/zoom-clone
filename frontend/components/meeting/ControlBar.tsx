@@ -27,10 +27,10 @@ function ControlButton({ label, active, onClick, onIcon, offIcon, disabled }: Co
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-16 flex-col items-center gap-1 rounded-lg py-2 text-white transition hover:bg-white/10 disabled:opacity-40"
+      className="flex w-12 flex-col items-center gap-1 rounded-lg py-2 text-white transition hover:bg-white/10 disabled:opacity-40 sm:w-16"
     >
       <span className={active ? "" : "text-red-400"}>{active ? onIcon : offIcon}</span>
-      <span className="text-[11px]">{label}</span>
+      <span className="text-[10px] sm:text-[11px]">{label}</span>
     </button>
   );
 }
@@ -80,8 +80,8 @@ export function ControlBar({
   }, []);
 
   return (
-    <div className="flex items-center justify-between bg-room-bg px-4 py-2">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between bg-room-bg px-2 py-2 sm:px-4">
+      <div className="flex items-center gap-0.5 sm:gap-2">
         <ControlButton
           label={audioEnabled ? "Mute" : "Unmute"}
           active={audioEnabled}
@@ -120,12 +120,12 @@ export function ControlBar({
         <button
           type="button"
           onClick={onToggleShare}
-          className={`flex w-16 flex-col items-center gap-1 rounded-lg py-2 transition hover:bg-white/10 ${
+          className={`flex w-12 flex-col items-center gap-1 rounded-lg py-2 transition hover:bg-white/10 sm:w-16 ${
             sharing ? "text-red-400" : "text-[#23D959]"
           }`}
         >
           <MonitorUp size={20} />
-          <span className="text-[11px]">{sharing ? "Stop Share" : "Share"}</span>
+          <span className="text-[10px] sm:text-[11px]">{sharing ? "Stop Share" : "Share"}</span>
         </button>
       </div>
 
@@ -135,7 +135,7 @@ export function ControlBar({
             <button
               type="button"
               onClick={() => setEndMenuOpen((open) => !open)}
-              className="rounded-lg bg-[#E02828] px-6 py-2 text-sm font-medium text-white transition hover:bg-[#c52222]"
+              className="ml-1 rounded-lg bg-[#E02828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c52222] sm:px-6"
             >
               End
             </button>
@@ -169,7 +169,7 @@ export function ControlBar({
           <button
             type="button"
             onClick={onLeave}
-            className="flex items-center gap-2 rounded-lg bg-[#E02828] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#c52222]"
+            className="ml-1 flex items-center gap-2 rounded-lg bg-[#E02828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c52222] sm:px-5"
           >
             <Phone size={16} className="rotate-[135deg]" />
             Leave
