@@ -3,6 +3,7 @@ import { ICE_SERVERS } from "./iceServers";
 export interface PeerManagerEvents {
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
   onPeerConnectionLost: (peerId: string) => void;
+  onConnectionFailed?: (peerId: string) => void;
 }
 
 type SendSignal = (type: "offer" | "answer" | "ice-candidate", to: string, payload: unknown) => void;
@@ -15,6 +16,7 @@ interface PeerState {
   polite: boolean;
   /** Candidates that arrived before setRemoteDescription. */
   pendingCandidates: RTCIceCandidateInit[];
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -122,9 +124,19 @@ export class PeerManager {
     }
   }
 
+  /** Tear down and renegotiate — helps peers on strict NAT / relay-only networks. */
+  async retryPeer(peerId: string): Promise<void> {
+    if (peerId === this.selfId) return;
+    const peer = this.peers.get(peerId);
+    if (peer?.reconnectTimer) clearTimeout(peer.reconnectTimer);
+    this.removePeer(peerId);
+    await this.connectTo(peerId);
+  }
+
   removePeer(peerId: string): void {
     const peer = this.peers.get(peerId);
     if (peer) {
+      if (peer.reconnectTimer) clearTimeout(peer.reconnectTimer);
       peer.pc.close();
       this.peers.delete(peerId);
     }
@@ -171,6 +183,7 @@ export class PeerManager {
       ignoreOffer: false,
       polite: this.selfId < peerId,
       pendingCandidates: [],
+      reconnectTimer: null,
     };
     this.peers.set(peerId, peer);
 
@@ -200,9 +213,24 @@ export class PeerManager {
       this.events.onRemoteStream(peerId, new MediaStream(accumulator.getTracks()));
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed") {
-        void this.makeOffer(peerId, peer);
-      } else if (pc.connectionState === "closed") {
+      const state = pc.connectionState;
+      if (state === "connected") {
+        if (peer.reconnectTimer) {
+          clearTimeout(peer.reconnectTimer);
+          peer.reconnectTimer = null;
+        }
+        return;
+      }
+      if (state === "failed" || state === "disconnected") {
+        if (peer.reconnectTimer) return;
+        peer.reconnectTimer = setTimeout(() => {
+          peer.reconnectTimer = null;
+          if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            this.events.onConnectionFailed?.(peerId);
+            void this.retryPeer(peerId);
+          }
+        }, state === "failed" ? 1500 : 5000);
+      } else if (state === "closed") {
         this.events.onPeerConnectionLost(peerId);
       }
     };

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { SignalingClient, signalingUrl } from "@/lib/signaling";
 import { PeerManager } from "@/lib/webrtc/PeerManager";
-import { fetchIceServers } from "@/lib/webrtc/fetchIceServers";
+import { fetchIceServers, resetIceServerCache } from "@/lib/webrtc/fetchIceServers";
 import type { ChatMessage, Participant } from "@/lib/types";
 
 export interface RemotePeer {
@@ -72,8 +72,10 @@ export function useMeetingConnection(
   const [peers, setPeers] = useState<Record<string, RemotePeer>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [mediaRetries, setMediaRetries] = useState<Record<string, number>>({});
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerManagerRef = useRef<PeerManager | null>(null);
+  const retryTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Ref, not dep: a late-arriving stream must not tear down the connection
   const localStreamRef = useRef(localStream);
   localStreamRef.current = localStream;
@@ -81,8 +83,33 @@ export function useMeetingConnection(
   useEffect(() => {
     if (!participant) return;
 
+    resetIceServerCache();
     let active = true;
     let innerCleanup: (() => void) | undefined;
+
+    const clearRetryTimer = (peerId: string) => {
+      const timer = retryTimersRef.current.get(peerId);
+      if (timer) {
+        clearTimeout(timer);
+        retryTimersRef.current.delete(peerId);
+      }
+    };
+
+    const scheduleMediaRetry = (peerId: string, peerManager: PeerManager) => {
+      clearRetryTimer(peerId);
+      const timer = setTimeout(() => {
+        retryTimersRef.current.delete(peerId);
+        if (!active) return;
+        setPeers((prev) => {
+          const entry = prev[peerId];
+          if (!entry || entry.stream) return prev;
+          void peerManager.retryPeer(peerId);
+          setMediaRetries((r) => ({ ...r, [peerId]: (r[peerId] ?? 0) + 1 }));
+          return prev;
+        });
+      }, 12000);
+      retryTimersRef.current.set(peerId, timer);
+    };
 
     void (async () => {
       const iceServers = await fetchIceServers();
@@ -103,14 +130,26 @@ export function useMeetingConnection(
         localStreamRef.current,
         (type, to, payload) => signaling.send({ type, to, payload }),
         {
-          onRemoteStream: (peerId, stream) =>
+          onRemoteStream: (peerId, stream) => {
+            clearRetryTimer(peerId);
+            setMediaRetries((r) => {
+              const next = { ...r };
+              delete next[peerId];
+              return next;
+            });
             setPeers((prev) =>
               prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream } } : prev,
-            ),
-          onPeerConnectionLost: (peerId) =>
+            );
+          },
+          onPeerConnectionLost: (peerId) => {
+            clearRetryTimer(peerId);
             setPeers((prev) =>
               prev[peerId] ? { ...prev, [peerId]: { ...prev[peerId], stream: null } } : prev,
-            ),
+            );
+          },
+          onConnectionFailed: (peerId) => {
+            setMediaRetries((r) => ({ ...r, [peerId]: (r[peerId] ?? 0) + 1 }));
+          },
         },
         iceServers,
       );
@@ -122,19 +161,30 @@ export function useMeetingConnection(
           case "roster": {
             const entries = (message.payload as { participants: RosterEntry[] }).participants;
             setPeers(Object.fromEntries(entries.map((e) => [e.participant_id, toRemotePeer(e)])));
-            entries.forEach((entry) => void peerManager.connectTo(entry.participant_id));
+            entries.forEach((entry) => {
+              void peerManager.connectTo(entry.participant_id);
+              scheduleMediaRetry(entry.participant_id, peerManager);
+            });
             break;
           }
           case "participant-joined": {
             const entry = message.payload as RosterEntry;
             setPeers((prev) => ({ ...prev, [entry.participant_id]: toRemotePeer(entry) }));
+            void peerManager.connectTo(entry.participant_id);
+            scheduleMediaRetry(entry.participant_id, peerManager);
             break;
           }
           case "participant-left": {
             const { participant_id } = message.payload as { participant_id: string };
+            clearRetryTimer(participant_id);
             peerManager.removePeer(participant_id);
             setPeers((prev) => {
               const next = { ...prev };
+              delete next[participant_id];
+              return next;
+            });
+            setMediaRetries((r) => {
+              const next = { ...r };
               delete next[participant_id];
               return next;
             });
@@ -223,9 +273,12 @@ export function useMeetingConnection(
     return () => {
       active = false;
       innerCleanup?.();
+      for (const timer of retryTimersRef.current.values()) clearTimeout(timer);
+      retryTimersRef.current.clear();
       setPeers({});
       setChatMessages([]);
       setReactions([]);
+      setMediaRetries({});
     };
   }, [code, participant]);
 
@@ -272,8 +325,25 @@ export function useMeetingConnection(
     return (await peerManagerRef.current?.getInboundAudioLevels()) ?? new Map<string, number>();
   }, []);
 
+  const retryConnections = useCallback(() => {
+    const manager = peerManagerRef.current;
+    if (!manager) return;
+    setPeers((prev) => {
+      for (const peer of Object.values(prev)) {
+        if (!peer.stream) void manager.retryPeer(peer.id);
+      }
+      return prev;
+    });
+  }, []);
+
+  const strugglingPeers = Object.values(peers).filter(
+    (p) => !p.stream && (mediaRetries[p.id] ?? 0) > 0,
+  );
+
   return {
     peers: Object.values(peers),
+    strugglingPeers,
+    mediaRetries,
     chatMessages,
     reactions,
     sendMediaState,
@@ -281,6 +351,7 @@ export function useMeetingConnection(
     setVideoOverride,
     replaceTrack,
     pollAudioLevels,
+    retryConnections,
     sendReaction,
     setHandRaised,
     muteAll,

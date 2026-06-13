@@ -68,6 +68,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
 
   const {
     peers,
+    strugglingPeers,
     chatMessages,
     reactions,
     sendMediaState,
@@ -75,6 +76,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     setVideoOverride,
     replaceTrack,
     pollAudioLevels,
+    retryConnections,
     sendReaction,
     setHandRaised: broadcastHand,
     muteAll,
@@ -345,6 +347,26 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
                 onMode={setViewMode}
                 onToggleHideSelf={() => setHideSelf((v) => !v)}
               />
+            </div>
+          )}
+
+          {strugglingPeers.length > 0 && (
+            <div className="absolute left-1/2 top-4 z-10 flex max-w-[90%] -translate-x-1/2 flex-col items-center gap-2 rounded-lg bg-amber-950/90 px-4 py-3 text-center text-xs text-amber-50 sm:flex-row">
+              <span>
+                Having trouble seeing or hearing{" "}
+                {strugglingPeers.map((p) => p.name).join(", ")}? Their network may need a relay
+                connection.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  resumeAudio();
+                  retryConnections();
+                }}
+                className="shrink-0 rounded bg-amber-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-amber-400"
+              >
+                Reconnect media
+              </button>
             </div>
           )}
 
