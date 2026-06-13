@@ -32,14 +32,36 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* floating meeting reaction: rise and fade */
+/* floating meeting reaction: rise across the full stage */
 @keyframes zc-reaction-rise {
-  0% { transform: translateY(0) scale(0.6); opacity: 0; }
-  15% { opacity: 1; }
-  100% { transform: translateY(-160px) scale(1.1); opacity: 0; }
+  0% {
+    transform: translate(-50%, 0) scale(0.55);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -70vh) scale(1.15);
+    opacity: 0;
+  }
 }
 .zc-reaction {
   animation: zc-reaction-rise 3.8s ease-out forwards;
+}
+
+@keyframes zc-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.zc-toast {
+  animation: zc-toast-in 0.28s ease-out forwards;
 }
 
 /* active-speaker ring: subtle pulse on the green highlight */

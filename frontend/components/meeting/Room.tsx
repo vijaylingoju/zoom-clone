@@ -7,6 +7,8 @@ import { VideoTile } from "@/components/meeting/VideoTile";
 import { ControlBar } from "@/components/meeting/ControlBar";
 import { ChatPanel } from "@/components/meeting/ChatPanel";
 import { MeetingInfoPopover } from "@/components/meeting/MeetingInfoPopover";
+import { MeetingReactions } from "@/components/meeting/MeetingReactions";
+import { MeetingToasts } from "@/components/meeting/MeetingToasts";
 import { MobileTopBar } from "@/components/meeting/MobileTopBar";
 import { RosterPanel } from "@/components/meeting/RosterPanel";
 import { ViewMenu, type ViewMode } from "@/components/meeting/ViewMenu";
@@ -15,6 +17,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMeetingConnection } from "@/hooks/useMeetingConnection";
 import type { LocalMedia } from "@/hooks/useLocalMedia";
 import type { Meeting, Participant } from "@/lib/types";
+import { playChatSound, playJoinSound, primeMeetingSounds } from "@/lib/meetingSounds";
 
 interface RoomProps {
   meeting: Meeting;
@@ -67,7 +70,6 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const isMobile = useIsMobile();
   const [rosterOpen, setRosterOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("speaker");
   const [hideSelf, setHideSelf] = useState(false);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
@@ -78,14 +80,18 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const [menuOpen, setMenuOpen] = useState(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevMessageCountRef = useRef(0);
   const chatOpenRef = useRef(false);
+  const playedToastsRef = useRef(new Set<string>());
 
   const {
     peers,
     strugglingPeers,
     chatMessages,
     reactions,
+    toasts,
+    unreadChat,
+    dismissToast,
+    clearUnreadChat,
     sendMediaState,
     sendChat,
     setVideoOverride,
@@ -109,6 +115,11 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     onMeetingEnded: onEnded,
   });
 
+  const visibleToasts = useMemo(
+    () => toasts.filter((toast) => toast.type !== "chat" || !chatOpen),
+    [toasts, chatOpen],
+  );
+
   const { activeId: activeSpeaker, resumeAudio } = useActiveSpeaker(
     useMemo(
       () => [
@@ -125,20 +136,36 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     resumeAudio();
   }, [peers, resumeAudio]);
 
+  // Prime notification audio as soon as the room mounts (user already clicked Join).
+  useEffect(() => {
+    primeMeetingSounds();
+  }, []);
+
   // Unlock remote playback on any tap/click (host often joins before guests arrive).
   useEffect(() => {
-    const unlock = () => resumeAudio();
+    const unlock = () => {
+      resumeAudio();
+      primeMeetingSounds();
+    };
     document.addEventListener("pointerdown", unlock);
     return () => document.removeEventListener("pointerdown", unlock);
   }, [resumeAudio]);
 
-  const reactionsByTile = useMemo(() => {
-    const map: Record<string, { key: string; emoji: string }[]> = {};
-    for (const r of reactions) {
-      (map[r.participantId] ??= []).push({ key: r.key, emoji: r.emoji });
+  useEffect(() => {
+    for (const toast of toasts) {
+      if (playedToastsRef.current.has(toast.id)) continue;
+      playedToastsRef.current.add(toast.id);
+      if (toast.type === "join") void playJoinSound();
+      else if (toast.type === "chat" && !chatOpenRef.current) void playChatSound();
     }
-    return map;
-  }, [reactions]);
+  }, [toasts]);
+
+  const openChat = useCallback(() => {
+    setChatOpen(true);
+    clearUnreadChat();
+  }, [clearUnreadChat]);
+
+  const displayedUnread = chatOpen ? 0 : unreadChat;
 
   const tiles: Tile[] = [
     {
@@ -200,17 +227,6 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   useEffect(() => {
     chatOpenRef.current = chatOpen;
   }, [chatOpen]);
-
-  // Track unread messages: increment when chat is closed and new messages arrive
-  useEffect(() => {
-    const newCount = chatMessages.length;
-    if (newCount > prevMessageCountRef.current) {
-      if (!chatOpenRef.current) {
-        setUnreadMessages((prev) => prev + (newCount - prevMessageCountRef.current));
-      }
-    }
-    prevMessageCountRef.current = newCount;
-  }, [chatMessages.length]);
 
   function toggleAudio() {
     resumeAudio();
@@ -336,7 +352,6 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           active={tile.id === activeSpeaker}
           pinned={pinned}
           handRaised={tile.handRaised}
-          reactions={reactionsByTile[tile.id]}
           compact={compact}
           fill={fill}
           objectFit={fit}
@@ -478,6 +493,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
             desktopSpeakerView
           )}
 
+          <MeetingReactions reactions={reactions} />
+
           {/* Mobile: floating Lower Hand pill */}
           {isMobile && handRaised && (
             <button
@@ -536,7 +553,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           isHost={isHost}
           handRaised={handRaised}
           incomingVideoStopped={incomingVideoStopped}
-          unreadMessages={unreadMessages}
+          unreadMessages={displayedUnread}
           audioDevices={media.audioDevices}
           videoDevices={media.videoDevices}
           currentAudioId={media.currentAudioId}
@@ -547,8 +564,10 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           onPickVideo={pickVideo}
           onToggleRoster={() => setRosterOpen((open) => !open)}
           onToggleChat={() => {
-            setChatOpen((open) => !open);
-            setUnreadMessages(0);
+            setChatOpen((open) => {
+              if (!open) clearUnreadChat();
+              return !open;
+            });
           }}
           onToggleShare={() => void toggleShare()}
           onReact={sendReaction}
@@ -562,6 +581,12 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           onMenuOpenChange={setMenuOpen}
         />
       </div>
+
+      <MeetingToasts
+        toasts={visibleToasts}
+        onDismiss={dismissToast}
+        onOpenChat={openChat}
+      />
     </div>
   );
 }

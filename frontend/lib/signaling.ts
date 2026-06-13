@@ -7,13 +7,12 @@ export interface SignalMessage {
   payload?: unknown;
 }
 
-const API_URL = getBackendUrl();
-const MAX_RECONNECT_ATTEMPTS = 5;
-
 export function signalingUrl(code: string, participantId: string): string {
-  const base = API_URL.replace(/^http/, "ws");
+  const base = getBackendUrl().replace(/^http/, "ws");
   return `${base}/ws/meetings/${code}?participant_id=${encodeURIComponent(participantId)}`;
 }
+
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 /**
  * Thin WebSocket wrapper: JSON message contract + reconnect with backoff.

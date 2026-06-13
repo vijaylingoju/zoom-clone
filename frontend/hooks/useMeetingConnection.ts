@@ -22,6 +22,15 @@ export interface FloatingReaction {
   key: string;
   participantId: string;
   emoji: string;
+  /** Horizontal position across the meeting stage (0–100). */
+  leftPct: number;
+}
+
+export interface MeetingToast {
+  id: string;
+  type: "join" | "chat";
+  title: string;
+  body?: string;
 }
 
 interface RosterEntry {
@@ -72,6 +81,8 @@ export function useMeetingConnection(
   const [peers, setPeers] = useState<Record<string, RemotePeer>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [toasts, setToasts] = useState<MeetingToast[]>([]);
+  const [unreadChat, setUnreadChat] = useState(0);
   const [mediaRetries, setMediaRetries] = useState<Record<string, number>>({});
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerManagerRef = useRef<PeerManager | null>(null);
@@ -79,6 +90,23 @@ export function useMeetingConnection(
   // Ref, not dep: a late-arriving stream must not tear down the connection
   const localStreamRef = useRef(localStream);
   localStreamRef.current = localStream;
+
+  const pushToast = useCallback((toast: Omit<MeetingToast, "id"> & { id?: string }) => {
+    const id = toast.id ?? `${toast.type}-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, { ...toast, id }]));
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const clearUnreadChat = useCallback(() => {
+    setUnreadChat(0);
+  }, []);
+
+  const pushToastRef = useRef(pushToast);
+  pushToastRef.current = pushToast;
 
   useEffect(() => {
     if (!participant) return;
@@ -172,6 +200,11 @@ export function useMeetingConnection(
             setPeers((prev) => ({ ...prev, [entry.participant_id]: toRemotePeer(entry) }));
             void peerManager.connectTo(entry.participant_id);
             scheduleMediaRetry(entry.participant_id, peerManager);
+            pushToastRef.current({
+              type: "join",
+              title: entry.display_name,
+              body: "joined the meeting",
+            });
             break;
           }
           case "participant-left": {
@@ -202,13 +235,26 @@ export function useMeetingConnection(
             setChatMessages((prev) =>
               prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
             );
+            if (incoming.participant_id !== participant.id) {
+              pushToastRef.current({
+                id: `chat-${incoming.id}`,
+                type: "chat",
+                title: incoming.display_name,
+                body: incoming.content,
+              });
+              setUnreadChat((count) => count + 1);
+            }
             break;
           }
           case "reaction": {
             if (!message.from) break;
             const { emoji } = message.payload as { emoji: string };
             const key = `${message.from}-${Date.now()}-${Math.random()}`;
-            setReactions((prev) => [...prev, { key, participantId: message.from as string, emoji }]);
+            const leftPct = 12 + Math.random() * 76;
+            setReactions((prev) => [
+              ...prev,
+              { key, participantId: message.from as string, emoji, leftPct },
+            ]);
             setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 4000);
             break;
           }
@@ -278,6 +324,8 @@ export function useMeetingConnection(
       setPeers({});
       setChatMessages([]);
       setReactions([]);
+      setToasts([]);
+      setUnreadChat(0);
       setMediaRetries({});
     };
   }, [code, participant]);
@@ -349,6 +397,10 @@ export function useMeetingConnection(
     mediaRetries,
     chatMessages,
     reactions,
+    toasts,
+    unreadChat,
+    dismissToast,
+    clearUnreadChat,
     sendMediaState,
     sendChat,
     setVideoOverride,

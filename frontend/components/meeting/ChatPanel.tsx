@@ -16,6 +16,12 @@ interface ChatPanelProps {
 export function ChatPanel({ messages, selfParticipantId, onSend, onClose }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -27,6 +33,7 @@ export function ChatPanel({ messages, selfParticipantId, onSend, onClose }: Chat
     if (!content) return;
     onSend(content);
     setDraft("");
+    inputRef.current?.focus();
   }
 
   return (
@@ -68,6 +75,7 @@ export function ChatPanel({ messages, selfParticipantId, onSend, onClose }: Chat
         </p>
         <div className="flex items-center gap-2">
           <input
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Type message here…"

@@ -1,4 +1,4 @@
-import { getBackendUrl } from "./backendUrl";
+import { getBackendUrl, getRestApiBase } from "./backendUrl";
 import type {
   ChatMessage,
   JoinResponse,
@@ -18,8 +18,6 @@ export function hostKeyFor(code: string): string | null {
   return localStorage.getItem(HOST_KEY_PREFIX + code);
 }
 
-const API_URL = getBackendUrl();
-
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -30,7 +28,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}/api${path}`, {
+  const base = typeof window !== "undefined" ? getRestApiBase() : getBackendUrl();
+  const res = await fetch(`${base}/api${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });

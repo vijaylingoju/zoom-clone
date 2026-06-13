@@ -19,8 +19,6 @@ interface VideoTileProps {
   /** Pinned as the main speaker (speaker view). */
   pinned?: boolean;
   handRaised?: boolean;
-  /** Floating reaction emojis currently playing on this tile. */
-  reactions?: { key: string; emoji: string }[];
   /** Filmstrip / gallery cell — smaller tile with large name when video off. */
   compact?: boolean;
   /** Fill parent instead of locking 16:9 (main stage / gallery cells). */
@@ -50,7 +48,6 @@ export function VideoTile({
   active,
   pinned,
   handRaised,
-  reactions = [],
   compact,
   fill,
   objectFit = "cover",
@@ -145,14 +142,6 @@ export function VideoTile({
           {compact ? "✋" : <Hand size={15} />}
         </div>
       )}
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-10 flex justify-center">
-        {reactions.map((r) => (
-          <span key={r.key} className="zc-reaction absolute text-4xl">
-            {r.emoji}
-          </span>
-        ))}
-      </div>
 
       {pinned && (
         <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-[#4B9CFF]/90 px-2 py-0.5">

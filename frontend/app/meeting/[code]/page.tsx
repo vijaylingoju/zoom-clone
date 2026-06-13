@@ -9,6 +9,7 @@ import { Room } from "@/components/meeting/Room";
 import { api, ApiError, hostKeyFor } from "@/lib/api";
 import type { Participant } from "@/lib/types";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
+import { primeMeetingSounds } from "@/lib/meetingSounds";
 
 type Stage = "name" | "permission" | "passcode" | "joining" | "room" | "left" | "ended" | "removed";
 
@@ -95,6 +96,7 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
   const displayName = isCreator ? (user?.name ?? "Host") : guestName.trim();
 
   async function join() {
+    primeMeetingSounds();
     setStage("joining");
     setJoinError(null);
     try {
