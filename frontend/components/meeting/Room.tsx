@@ -74,6 +74,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     sendChat,
     setVideoOverride,
     replaceTrack,
+    pollAudioLevels,
     sendReaction,
     setHandRaised: broadcastHand,
     muteAll,
@@ -99,7 +100,13 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
       ],
       [participant.id, media.stream, peers],
     ),
+    pollAudioLevels,
   );
+
+  // Remote audio elements need a user gesture or an explicit play() after tracks arrive.
+  useEffect(() => {
+    resumeAudio();
+  }, [peers, resumeAudio]);
 
   const reactionsByTile = useMemo(() => {
     const map: Record<string, { key: string; emoji: string }[]> = {};

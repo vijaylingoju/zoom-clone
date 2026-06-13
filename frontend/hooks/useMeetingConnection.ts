@@ -268,6 +268,10 @@ export function useMeetingConnection(
     await peerManagerRef.current?.replaceLocalTrack(track);
   }, []);
 
+  const pollAudioLevels = useCallback(async () => {
+    return (await peerManagerRef.current?.getInboundAudioLevels()) ?? new Map<string, number>();
+  }, []);
+
   return {
     peers: Object.values(peers),
     chatMessages,
@@ -276,6 +280,7 @@ export function useMeetingConnection(
     sendChat,
     setVideoOverride,
     replaceTrack,
+    pollAudioLevels,
     sendReaction,
     setHandRaised,
     muteAll,

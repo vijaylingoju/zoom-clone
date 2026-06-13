@@ -137,6 +137,26 @@ export class PeerManager {
     this.remoteStreams.clear();
   }
 
+  /** Inbound audio levels from WebRTC stats (0–1). Used for active-speaker UI. */
+  async getInboundAudioLevels(): Promise<Map<string, number>> {
+    const levels = new Map<string, number>();
+    for (const [peerId, peer] of this.peers) {
+      try {
+        const stats = await peer.pc.getStats();
+        for (const report of stats.values()) {
+          if (report.type !== "inbound-rtp" || report.kind !== "audio") continue;
+          const level = (report as RTCInboundRtpStreamStats).audioLevel;
+          if (typeof level === "number") {
+            levels.set(peerId, Math.max(levels.get(peerId) ?? 0, level));
+          }
+        }
+      } catch {
+        // pc may be closing
+      }
+    }
+    return levels;
+  }
+
   private getOrCreate(peerId: string): PeerState {
     const existing = this.peers.get(peerId);
     if (existing) return existing;

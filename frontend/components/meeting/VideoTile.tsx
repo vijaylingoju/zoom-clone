@@ -3,6 +3,8 @@
 import { Hand, MicOff } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { resumeRemoteAudio } from "@/lib/remoteAudio";
+
 interface VideoTileProps {
   stream: MediaStream | null;
   name: string;
@@ -43,8 +45,10 @@ export function VideoTile({
   compact,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const showVideo = stream !== null && !videoOff && stream.getVideoTracks().length > 0;
   const mirrored = mirror ?? isSelf;
+  const hasRemoteAudio = !isSelf && stream !== null && stream.getAudioTracks().length > 0;
 
   useEffect(() => {
     if (videoRef.current && stream && showVideo) {
@@ -52,12 +56,36 @@ export function VideoTile({
     }
   }, [stream, showVideo]);
 
+  useEffect(() => {
+    if (isSelf || !stream) return;
+
+    const attach = () => {
+      const el = audioRef.current;
+      if (!el) return;
+      const tracks = stream.getAudioTracks();
+      if (tracks.length === 0) return;
+      tracks.forEach((t) => {
+        t.enabled = true;
+      });
+      el.srcObject = new MediaStream(tracks);
+      el.volume = 1;
+      resumeRemoteAudio();
+    };
+
+    attach();
+    stream.addEventListener("addtrack", attach);
+    return () => stream.removeEventListener("addtrack", attach);
+  }, [stream, isSelf]);
+
   return (
     <div
       className={`relative w-full overflow-hidden bg-room-panel ring-2 transition-[box-shadow] ${
         compact ? "h-full min-h-[140px] rounded-lg" : "aspect-video rounded-xl"
       } ${active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"}`}
     >
+      {hasRemoteAudio && (
+        <audio ref={audioRef} data-remote-audio autoPlay playsInline className="hidden" />
+      )}
       {showVideo ? (
         <video
           ref={videoRef}
@@ -90,7 +118,6 @@ export function VideoTile({
         </div>
       )}
 
-      {/* floating reactions rise from the bottom-center */}
       <div className="pointer-events-none absolute inset-x-0 bottom-10 flex justify-center">
         {reactions.map((r) => (
           <span key={r.key} className="zc-reaction absolute text-4xl">
@@ -99,7 +126,6 @@ export function VideoTile({
         ))}
       </div>
 
-      {/* Active speaker indicator label */}
       {active && (
         <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-[#23D959]/90 px-2 py-0.5">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
