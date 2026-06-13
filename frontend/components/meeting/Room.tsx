@@ -2,6 +2,7 @@
 
 import { Hand } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { ControlBar } from "@/components/meeting/ControlBar";
@@ -17,7 +18,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMeetingConnection } from "@/hooks/useMeetingConnection";
 import type { LocalMedia } from "@/hooks/useLocalMedia";
 import type { Meeting, Participant } from "@/lib/types";
-import { playChatSound, playJoinSound, primeMeetingSounds } from "@/lib/meetingSounds";
+import { playChatSound, playHandSound, playJoinSound, primeMeetingSounds } from "@/lib/meetingSounds";
 
 interface RoomProps {
   meeting: Meeting;
@@ -78,10 +79,13 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNotice, setMobileNotice] = useState<string | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatOpenRef = useRef(false);
   const playedToastsRef = useRef(new Set<string>());
+  const prevPeerHandsRef = useRef<Record<string, boolean>>({});
 
   const {
     peers,
@@ -160,12 +164,30 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     }
   }, [toasts]);
 
+  useEffect(() => {
+    for (const peer of peers) {
+      const wasRaised = prevPeerHandsRef.current[peer.id] ?? false;
+      if (peer.handRaised && !wasRaised) void playHandSound();
+      prevPeerHandsRef.current[peer.id] = peer.handRaised;
+    }
+  }, [peers]);
+
   const openChat = useCallback(() => {
+    setRosterOpen(false);
     setChatOpen(true);
     clearUnreadChat();
   }, [clearUnreadChat]);
 
+  const openRoster = useCallback(() => {
+    setChatOpen(false);
+    setRosterOpen(true);
+  }, []);
+
   const displayedUnread = chatOpen ? 0 : unreadChat;
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   const tiles: Tile[] = [
     {
@@ -244,6 +266,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     const next = !handRaised;
     setHandRaised(next);
     broadcastHand(next);
+    if (next) void playHandSound();
   }
 
   async function pickAudio(deviceId: string) {
@@ -269,6 +292,11 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
       stopShare();
       return;
     }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setMobileNotice("Screen sharing is not supported in this mobile browser.");
+      setTimeout(() => setMobileNotice(null), 4000);
+      return;
+    }
     try {
       const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const track = display.getVideoTracks()[0];
@@ -277,8 +305,10 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
       setScreenStream(display);
       await setVideoOverride(track);
       sendMediaState(media.audioEnabled, true);
-    } catch {
-      // user cancelled the picker
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "NotAllowedError") return;
+      setMobileNotice("Could not start screen sharing on this device.");
+      setTimeout(() => setMobileNotice(null), 4000);
     }
   }
 
@@ -508,15 +538,9 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           )}
         </main>
 
-        {/* Desktop: side panel RIGHT of stage; Mobile: full-screen overlay */}
-        {panelOpen && (
-          <aside
-            className={
-              isMobile
-                ? "fixed inset-0 z-40 flex flex-col bg-[#1f1f1f]"
-                : "flex w-80 shrink-0 flex-col border-l border-white/10 bg-[#1f1f1f]"
-            }
-          >
+        {/* Desktop: side panel RIGHT of stage; Mobile: full-screen portal overlay */}
+        {!isMobile && panelOpen && (
+          <aside className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-[#1f1f1f]">
             {rosterOpen && (
               <RosterPanel
                 entries={rosterEntries}
@@ -538,6 +562,39 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           </aside>
         )}
       </div>
+
+      {isMobile && mobileNotice && (
+        <div className="pointer-events-none fixed left-1/2 top-16 z-[70] max-w-[90%] -translate-x-1/2 rounded-lg bg-black/85 px-4 py-2 text-center text-xs text-white">
+          {mobileNotice}
+        </div>
+      )}
+
+      {isMobile &&
+        panelOpen &&
+        portalReady &&
+        createPortal(
+          <div className="fixed inset-0 z-[80] flex flex-col bg-[#1f1f1f]">
+            {rosterOpen && (
+              <RosterPanel
+                entries={rosterEntries}
+                inviteUrl={meeting.join_url}
+                isHost={isHost}
+                onMuteAll={muteAll}
+                onRemove={removeParticipant}
+                onClose={() => setRosterOpen(false)}
+              />
+            )}
+            {chatOpen && (
+              <ChatPanel
+                messages={chatMessages}
+                selfParticipantId={participant.id}
+                onSend={sendChat}
+                onClose={() => setChatOpen(false)}
+              />
+            )}
+          </div>,
+          document.body,
+        )}
 
       <div
         className={`relative z-40 shrink-0 transition-opacity duration-300 ${
@@ -563,6 +620,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           onPickAudio={pickAudio}
           onPickVideo={pickVideo}
           onToggleRoster={() => setRosterOpen((open) => !open)}
+          onOpenParticipants={openRoster}
+          onOpenChat={openChat}
           onToggleChat={() => {
             setChatOpen((open) => {
               if (!open) clearUnreadChat();

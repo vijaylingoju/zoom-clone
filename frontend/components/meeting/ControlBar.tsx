@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { DeviceMenu } from "@/components/meeting/DeviceMenu";
 import { MobileMoreSheet } from "@/components/meeting/MobileMoreSheet";
@@ -90,6 +91,9 @@ interface ControlBarProps {
   onPickVideo: (deviceId: string) => void;
   onToggleRoster: () => void;
   onToggleChat: () => void;
+  /** Mobile: open panel without toggling closed. */
+  onOpenChat?: () => void;
+  onOpenParticipants?: () => void;
   onToggleShare: () => void;
   onReact: (emoji: string) => void;
   onToggleHand: () => void;
@@ -120,6 +124,8 @@ export function ControlBar(props: ControlBarProps) {
     onPickVideo,
     onToggleRoster,
     onToggleChat,
+    onOpenChat,
+    onOpenParticipants,
     onToggleShare,
     onReact,
     onToggleHand,
@@ -132,24 +138,36 @@ export function ControlBar(props: ControlBarProps) {
 
   const isMobile = useIsMobile();
   const [menu, setMenu] = useState<MenuId>(null);
+  const [portalReady, setPortalReady] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   const openMenu = (id: MenuId) => setMenu((cur) => (cur === id ? null : id));
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     onMenuOpenChange?.(menu !== null);
   }, [menu, onMenuOpenChange]);
 
+  // Desktop only: close popovers on outside click.
+  // Mobile More sheet is portaled outside barRef — mousedown here was
+  // unmounting the sheet before its button onClick could run.
   useEffect(() => {
+    if (isMobile) return;
+
     function handler(event: MouseEvent) {
       if (!barRef.current) return;
-      if (!barRef.current.contains(event.target as Node)) {
-        setMenu(null);
-      }
+      const target = event.target as Node;
+      if (barRef.current.contains(target)) return;
+      if (sheetRef.current?.contains(target)) return;
+      setMenu(null);
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [isMobile]);
 
   if (isMobile) {
     return (
@@ -190,18 +208,23 @@ export function ControlBar(props: ControlBarProps) {
           </div>
         </div>
 
-        {menu === "mobile-more" && (
-          <MobileMoreSheet
-            handRaised={handRaised}
-            sharing={sharing}
-            unreadMessages={unreadMessages}
-            onToggleHand={onToggleHand}
-            onOpenParticipants={onToggleRoster}
-            onOpenChat={onToggleChat}
-            onToggleShare={onToggleShare}
-            onClose={() => setMenu(null)}
-          />
-        )}
+        {menu === "mobile-more" &&
+          portalReady &&
+          createPortal(
+            <div ref={sheetRef}>
+              <MobileMoreSheet
+                handRaised={handRaised}
+                sharing={sharing}
+                unreadMessages={unreadMessages}
+                onToggleHand={onToggleHand}
+                onOpenParticipants={onOpenParticipants ?? onToggleRoster}
+                onOpenChat={onOpenChat ?? onToggleChat}
+                onToggleShare={onToggleShare}
+                onClose={() => setMenu(null)}
+              />
+            </div>,
+            document.body,
+          )}
       </>
     );
   }

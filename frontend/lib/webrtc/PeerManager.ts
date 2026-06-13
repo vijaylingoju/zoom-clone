@@ -39,6 +39,11 @@ export class PeerManager {
     private iceServers: RTCIceServer[] = ICE_SERVERS,
   ) {}
 
+  /** Keep in sync when useLocalMedia replaces the stream object. */
+  updateLocalStream(stream: MediaStream | null): void {
+    this.localStream = stream;
+  }
+
   /**
    * Find the outbound sender for a media kind. After replaceTrack(null) the
    * sender still exists but track is null — match by excluding the other kind.

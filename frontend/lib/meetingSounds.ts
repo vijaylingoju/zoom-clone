@@ -49,3 +49,13 @@ export async function playChatSound(): Promise<void> {
   tone(ctx, 784, t, 0.1, 0.09);
   tone(ctx, 988, t + 0.07, 0.12, 0.07);
 }
+
+/** Short chirp when someone raises their hand. */
+export async function playHandSound(): Promise<void> {
+  const ctx = await getContext();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  tone(ctx, 440, t, 0.09, 0.1);
+  tone(ctx, 587, t + 0.07, 0.11, 0.09);
+  tone(ctx, 740, t + 0.14, 0.12, 0.08);
+}

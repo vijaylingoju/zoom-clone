@@ -330,6 +330,11 @@ export function useMeetingConnection(
     };
   }, [code, participant]);
 
+  useEffect(() => {
+    localStreamRef.current = localStream;
+    peerManagerRef.current?.updateLocalStream(localStream);
+  }, [localStream]);
+
   const sendMediaState = useCallback((audio: boolean, video: boolean) => {
     signalingRef.current?.send({ type: "media-state", payload: { audio, video } });
   }, []);

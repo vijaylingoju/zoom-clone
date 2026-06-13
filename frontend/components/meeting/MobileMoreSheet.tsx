@@ -38,7 +38,11 @@ export function MobileMoreSheet({
   const stub = `${row} text-white/40`;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" onClick={onClose}>
+    <div
+      id="mobile-more-sheet"
+      className="fixed inset-0 z-[75] flex flex-col justify-end bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="rounded-t-2xl bg-[#1f1f1f] pb-6"
         onClick={(e) => e.stopPropagation()}
@@ -47,15 +51,39 @@ export function MobileMoreSheet({
           <div className="h-1 w-10 rounded-full bg-white/30" />
         </div>
 
-        <button type="button" className={row} onClick={() => { onToggleHand(); onClose(); }}>
+        <button
+          type="button"
+          className={row}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            onToggleHand();
+            onClose();
+          }}
+        >
           <span>{handRaised ? "Lower Hand" : "Raise Hand"}</span>
           <Hand size={20} />
         </button>
-        <button type="button" className={row} onClick={() => { onOpenParticipants(); onClose(); }}>
+        <button
+          type="button"
+          className={row}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            onOpenParticipants();
+            onClose();
+          }}
+        >
           <span>Participants</span>
           <Users size={20} />
         </button>
-        <button type="button" className={row} onClick={() => { onOpenChat(); onClose(); }}>
+        <button
+          type="button"
+          className={row}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            onOpenChat();
+            onClose();
+          }}
+        >
           <span>Chat</span>
           <span className="flex items-center gap-2">
             {unreadMessages > 0 && (
@@ -69,7 +97,11 @@ export function MobileMoreSheet({
         <button
           type="button"
           className={`${row} ${sharing ? "text-red-400" : "text-[#23D959]"}`}
-          onClick={() => { onToggleShare(); onClose(); }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            onToggleShare();
+            onClose();
+          }}
         >
           <span>{sharing ? "Stop Sharing" : "Share Screen"}</span>
           <MonitorUp size={20} />
