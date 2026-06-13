@@ -55,12 +55,20 @@ export function VideoTile({
 
   // Remote audio always uses a dedicated element — video-only tiles were silent.
   useEffect(() => {
-    if (!isSelf && audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
-      void audioRef.current.play().catch(() => {
+    if (isSelf || !stream) return;
+
+    const play = () => {
+      const el = audioRef.current;
+      if (!el) return;
+      el.srcObject = stream;
+      void el.play().catch(() => {
         // autoplay may need a prior user gesture; join click usually satisfies this
       });
-    }
+    };
+
+    play();
+    stream.addEventListener("addtrack", play);
+    return () => stream.removeEventListener("addtrack", play);
   }, [stream, isSelf]);
 
   return (

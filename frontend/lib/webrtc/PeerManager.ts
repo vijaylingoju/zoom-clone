@@ -22,6 +22,8 @@ interface PeerState {
  */
 export class PeerManager {
   private peers = new Map<string, PeerState>();
+  /** One accumulated stream per peer — ontrack fires once per track. */
+  private remoteStreams = new Map<string, MediaStream>();
   /** Screen-share track currently replacing the camera, if any. */
   private videoOverride: MediaStreamTrack | null = null;
 
@@ -109,11 +111,13 @@ export class PeerManager {
       peer.pc.close();
       this.peers.delete(peerId);
     }
+    this.remoteStreams.delete(peerId);
   }
 
   closeAll(): void {
     this.peers.forEach((peer) => peer.pc.close());
     this.peers.clear();
+    this.remoteStreams.clear();
   }
 
   private getOrCreate(peerId: string): PeerState {
@@ -145,8 +149,16 @@ export class PeerManager {
       }
     };
     pc.ontrack = (event) => {
-      const stream = event.streams[0] ?? new MediaStream([event.track]);
-      this.events.onRemoteStream(peerId, stream);
+      let accumulator = this.remoteStreams.get(peerId);
+      if (!accumulator) {
+        accumulator = new MediaStream();
+        this.remoteStreams.set(peerId, accumulator);
+      }
+      if (!accumulator.getTracks().some((t) => t.id === event.track.id)) {
+        accumulator.addTrack(event.track);
+      }
+      // Fresh object so React re-attaches when the second track (audio/video) arrives.
+      this.events.onRemoteStream(peerId, new MediaStream(accumulator.getTracks()));
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed") {
