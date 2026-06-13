@@ -51,13 +51,21 @@ export function VideoTile({
   const hasRemoteAudio = !isSelf && stream !== null && stream.getAudioTracks().length > 0;
 
   useEffect(() => {
-    if (videoRef.current && stream && showVideo) {
-      videoRef.current.srcObject = stream;
+    const el = videoRef.current;
+    if (!el || !stream || !showVideo) return;
+    el.srcObject = stream;
+    if (isSelf) {
+      el.muted = true;
+    } else {
+      el.muted = false;
+      el.volume = 1;
+      resumeRemoteAudio();
     }
-  }, [stream, showVideo]);
+  }, [stream, showVideo, isSelf]);
 
+  // Camera-off remote peers: audio-only via a hidden element.
   useEffect(() => {
-    if (isSelf || !stream) return;
+    if (isSelf || !stream || showVideo) return;
 
     const attach = () => {
       const el = audioRef.current;
@@ -75,7 +83,7 @@ export function VideoTile({
     attach();
     stream.addEventListener("addtrack", attach);
     return () => stream.removeEventListener("addtrack", attach);
-  }, [stream, isSelf]);
+  }, [stream, isSelf, showVideo]);
 
   return (
     <div
@@ -83,7 +91,7 @@ export function VideoTile({
         compact ? "h-full min-h-[140px] rounded-lg" : "aspect-video rounded-xl"
       } ${active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"}`}
     >
-      {hasRemoteAudio && (
+      {hasRemoteAudio && !showVideo && (
         <audio ref={audioRef} data-remote-audio autoPlay playsInline className="hidden" />
       )}
       {showVideo ? (
@@ -91,7 +99,8 @@ export function VideoTile({
           ref={videoRef}
           autoPlay
           playsInline
-          muted
+          muted={isSelf}
+          data-remote-video={isSelf ? undefined : ""}
           className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""}`}
         />
       ) : (

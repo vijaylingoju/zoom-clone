@@ -108,6 +108,13 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     resumeAudio();
   }, [peers, resumeAudio]);
 
+  // Unlock remote playback on any tap/click (host often joins before guests arrive).
+  useEffect(() => {
+    const unlock = () => resumeAudio();
+    document.addEventListener("pointerdown", unlock);
+    return () => document.removeEventListener("pointerdown", unlock);
+  }, [resumeAudio]);
+
   const reactionsByTile = useMemo(() => {
     const map: Record<string, { key: string; emoji: string }[]> = {};
     for (const r of reactions) {

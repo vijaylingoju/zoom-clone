@@ -1,6 +1,15 @@
-/** Resume every remote peer audio element (browser autoplay policy). */
+/** Resume remote participant playback (browser autoplay policy). */
 export function resumeRemoteAudio(): void {
   document.querySelectorAll("audio[data-remote-audio]").forEach((el) => {
-    void (el as HTMLAudioElement).play().catch(() => {});
+    const audio = el as HTMLAudioElement;
+    audio.volume = 1;
+    void audio.play().catch(() => {});
+  });
+
+  document.querySelectorAll("video[data-remote-video]").forEach((el) => {
+    const video = el as HTMLVideoElement;
+    video.muted = false;
+    video.volume = 1;
+    void video.play().catch(() => {});
   });
 }
