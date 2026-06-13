@@ -5,7 +5,9 @@ import { Video } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 
-import { Room } from "@/components/meeting/Room";
+import { JoiningScreen } from "@/components/meeting/JoiningScreen";
+import { MeetingRoomHost } from "@/components/meeting/MeetingRoomHost";
+import { useMeetingPipOptional } from "@/lib/meetingPipContext";
 import { api, ApiError, hostKeyFor } from "@/lib/api";
 import type { Participant } from "@/lib/types";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
@@ -70,7 +72,8 @@ function DarkNotice({
 export default function MeetingPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
-  const media = useLocalMedia();
+  const pip = useMeetingPipOptional();
+  const media = useLocalMedia({ keepAliveRef: pip?.keepAliveRef });
   const isCreator = typeof window !== "undefined" && hostKeyFor(code) !== null;
 
   const [stage, setStage] = useState<Stage>(isCreator ? "permission" : "name");
@@ -117,13 +120,37 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
     }
   }
 
+  async function handleLeave() {
+    try {
+      if (participant) await api.leaveMeeting(code, participant.id);
+    } catch {
+      // leaving must always succeed locally
+    }
+    media.stop();
+    pip?.clearSession();
+    setStage("left");
+  }
+
+  function handleEnded() {
+    media.stop();
+    pip?.clearSession();
+    setStage("ended");
+  }
+
+  function handleRemoved() {
+    media.stop();
+    pip?.clearSession();
+    setStage("removed");
+  }
+
   function backToDashboard() {
     media.stop();
+    pip?.clearSession();
     router.push("/");
   }
 
   if (isLoading) {
-    return <DarkScreen>Loading meeting…</DarkScreen>;
+    return <JoiningScreen message="Loading meeting..." onBack={backToDashboard} />;
   }
 
   if (error instanceof ApiError && error.status === 404) {
@@ -267,7 +294,14 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
       );
 
     case "joining":
-      return <DarkScreen>Joining…</DarkScreen>;
+      return (
+        <JoiningScreen
+          onBack={() => {
+            setStage("permission");
+            setJoinError(null);
+          }}
+        />
+      );
 
     case "left":
       return (
@@ -294,27 +328,22 @@ export default function MeetingPage({ params }: { params: Promise<{ code: string
     case "room":
       if (!participant) return null;
       return (
-        <Room
+        <MeetingRoomHost
           meeting={meeting}
           participant={participant}
-          media={media}
-          onLeft={async () => {
-            try {
-              await api.leaveMeeting(code, participant.id);
-            } catch {
-              // leaving must always succeed locally
-            }
-            media.stop();
-            setStage("left");
+          mediaBootstrap={{
+            stream: media.stream,
+            permission: media.permission,
+            audioEnabled: media.audioEnabled,
+            videoEnabled: media.videoEnabled,
+            audioDevices: media.audioDevices,
+            videoDevices: media.videoDevices,
+            currentAudioId: media.currentAudioId,
+            currentVideoId: media.currentVideoId,
           }}
-          onEnded={() => {
-            media.stop();
-            setStage("ended");
-          }}
-          onRemoved={() => {
-            media.stop();
-            setStage("removed");
-          }}
+          onLeft={handleLeave}
+          onEnded={handleEnded}
+          onRemoved={handleRemoved}
         />
       );
   }

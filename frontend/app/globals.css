@@ -87,3 +87,7 @@ body {
   background-size: 200% 100%;
   animation: zc-shimmer 1.5s ease-in-out infinite;
 }
+
+.font-zoom-wordmark {
+  font-family: var(--font-nunito), "Nunito", sans-serif;
+}

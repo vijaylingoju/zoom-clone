@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { VideoTile } from "@/components/meeting/VideoTile";
 import type { LocalMedia } from "@/hooks/useLocalMedia";
+import { readMediaFlags } from "@/lib/mediaState";
 import type { Meeting } from "@/lib/types";
 
 interface LobbyProps {
@@ -49,7 +50,8 @@ function RoundToggle({
 export function Lobby({ meeting, media, defaultName, joining, joinError, onJoin }: LobbyProps) {
   const [name, setName] = useState(defaultName);
   const [nameTouched, setNameTouched] = useState(false);
-  const mediaAvailable = media.permission === "granted";
+  const { audioEnabled, videoEnabled, hasAudioTrack, hasVideoTrack } = readMediaFlags(media);
+  const canControlDevices = media.permission === "granted" || media.permission === "skipped";
 
   // defaultName arrives async (/api/me); prefill until the user edits the field
   useEffect(() => {
@@ -67,15 +69,25 @@ export function Lobby({ meeting, media, defaultName, joining, joinError, onJoin 
         <VideoTile
           stream={media.stream}
           name={name.trim() || "You"}
-          muted={!media.audioEnabled}
-          videoOff={!media.videoEnabled}
+          muted={!audioEnabled}
+          videoOff={!videoEnabled}
           isSelf
         />
 
-        {media.permission === "denied" && (
+        {media.permission === "denied" && !hasAudioTrack && !hasVideoTrack && (
           <p className="mt-3 text-center text-sm text-amber-400">
             Camera and microphone are blocked. Allow access in your browser, or join without
             them.
+          </p>
+        )}
+        {media.permission === "granted" && hasAudioTrack && !hasVideoTrack && (
+          <p className="mt-3 text-center text-sm text-amber-400">
+            Camera access is off. Your microphone is ready — you can join with audio only.
+          </p>
+        )}
+        {media.permission === "granted" && !hasAudioTrack && hasVideoTrack && (
+          <p className="mt-3 text-center text-sm text-amber-400">
+            Microphone access is off. Your camera is ready — you can join with video only.
           </p>
         )}
         {media.permission === "unavailable" && (
@@ -86,20 +98,20 @@ export function Lobby({ meeting, media, defaultName, joining, joinError, onJoin 
 
         <div className="mt-4 flex items-center justify-center gap-4">
           <RoundToggle
-            active={media.audioEnabled}
-            onClick={media.toggleAudio}
+            active={audioEnabled}
+            onClick={() => void media.toggleAudio()}
             onIcon={<Mic size={20} />}
             offIcon={<MicOff size={20} />}
-            label={media.audioEnabled ? "Mute microphone" : "Unmute microphone"}
-            disabled={!mediaAvailable}
+            label={audioEnabled ? "Mute microphone" : "Unmute microphone"}
+            disabled={!canControlDevices}
           />
           <RoundToggle
-            active={media.videoEnabled}
+            active={videoEnabled}
             onClick={() => void media.toggleVideo()}
             onIcon={<Video size={20} />}
             offIcon={<VideoOff size={20} />}
-            label={media.videoEnabled ? "Stop video" : "Start video"}
-            disabled={!mediaAvailable}
+            label={videoEnabled ? "Stop video" : "Start video"}
+            disabled={!canControlDevices}
           />
         </div>
 

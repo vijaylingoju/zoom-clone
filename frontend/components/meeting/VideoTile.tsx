@@ -1,6 +1,6 @@
 "use client";
 
-import { Hand, MicOff, Pin, PinOff } from "lucide-react";
+import { Hand, MicOff, Pin, PinOff, VideoOff } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { resumeRemoteAudio } from "@/lib/remoteAudio";
@@ -95,17 +95,20 @@ export function VideoTile({
     return () => stream.removeEventListener("addtrack", attach);
   }, [stream, isSelf, showVideo]);
 
-  const shellClass = fill
-    ? "h-full min-h-0 w-full rounded-xl"
-    : compact
-      ? "h-full min-h-[88px] w-full rounded-lg"
-      : "aspect-video w-full rounded-xl";
+  const shellClass =
+    fill && !compact
+      ? "h-full min-h-0 w-full rounded-none"
+      : fill
+        ? "h-full min-h-0 w-full rounded-xl"
+        : compact
+          ? "h-full min-h-[88px] w-full rounded-lg"
+          : "aspect-video w-full rounded-xl";
 
   return (
     <div
-      className={`relative overflow-hidden bg-room-panel ring-2 transition-[box-shadow] ${shellClass} ${
-        pinned ? "ring-[#4B9CFF]" : active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"
-      }`}
+      className={`relative overflow-hidden transition-[box-shadow] ${shellClass} ${
+        fill && !compact ? "bg-transparent ring-0" : "bg-room-panel ring-2"
+      } ${pinned ? "ring-[#4B9CFF]" : active ? "zc-active-speaker ring-[#23D959]" : fill && !compact ? "" : "ring-transparent"}`}
     >
       {hasRemoteAudio && !showVideo && (
         <audio ref={audioRef} data-remote-audio autoPlay playsInline className="hidden" />
@@ -120,12 +123,16 @@ export function VideoTile({
           className={`h-full w-full ${objectFit === "contain" ? "object-contain" : "object-cover"} ${mirrored ? "-scale-x-100" : ""}`}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center">
+        <div className="flex h-full w-full items-center justify-center bg-[#2d2d2d]">
           {compact ? (
             <span className="font-serif text-2xl text-white">{name.split(" ")[0]}</span>
+          ) : fill ? (
+            <span className="flex h-[min(42vw,260px)] w-[min(42vw,260px)] items-center justify-center rounded-[4px] bg-[#8475CE] text-[min(20vw,128px)] font-normal leading-none text-white">
+              {name.trim().charAt(0).toUpperCase()}
+            </span>
           ) : (
-            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-zoom-blue text-2xl font-semibold text-white">
-              {initials(name)}
+            <span className="flex h-[88px] w-[88px] items-center justify-center rounded-[4px] bg-[#8475CE] text-4xl font-normal text-white">
+              {name.trim().charAt(0).toUpperCase()}
             </span>
           )}
         </div>
@@ -174,9 +181,10 @@ export function VideoTile({
         </button>
       )}
 
-      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded bg-black/60 px-2 py-1 text-xs text-white">
+      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded bg-black/70 px-2 py-1 text-xs text-white">
         {muted && <MicOff size={12} className="text-red-400" />}
-        <span>{name}</span>
+        {videoOff && <VideoOff size={12} className="text-red-400" />}
+        <span>{name.replace(/\s*\(You[^)]*\)/i, "").trim()}</span>
       </div>
     </div>
   );

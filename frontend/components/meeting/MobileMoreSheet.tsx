@@ -40,7 +40,7 @@ export function MobileMoreSheet({
   return (
     <div
       id="mobile-more-sheet"
-      className="fixed inset-0 z-[75] flex flex-col justify-end bg-black/60"
+      className="fixed inset-0 z-[250] flex flex-col justify-end bg-black/60"
       onClick={onClose}
     >
       <div
@@ -54,8 +54,7 @@ export function MobileMoreSheet({
         <button
           type="button"
           className={row}
-          onPointerUp={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onToggleHand();
             onClose();
           }}
@@ -66,8 +65,7 @@ export function MobileMoreSheet({
         <button
           type="button"
           className={row}
-          onPointerUp={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onOpenParticipants();
             onClose();
           }}
@@ -78,8 +76,7 @@ export function MobileMoreSheet({
         <button
           type="button"
           className={row}
-          onPointerUp={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onOpenChat();
             onClose();
           }}
@@ -97,8 +94,7 @@ export function MobileMoreSheet({
         <button
           type="button"
           className={`${row} ${sharing ? "text-red-400" : "text-[#23D959]"}`}
-          onPointerUp={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onToggleShare();
             onClose();
           }}

@@ -1,22 +1,23 @@
 "use client";
 
-import { Hand } from "lucide-react";
+import { Hand, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { ControlBar } from "@/components/meeting/ControlBar";
 import { ChatPanel } from "@/components/meeting/ChatPanel";
-import { MeetingInfoPopover } from "@/components/meeting/MeetingInfoPopover";
+import { MeetingTopBar } from "@/components/meeting/MeetingTopBar";
 import { MeetingReactions } from "@/components/meeting/MeetingReactions";
 import { MeetingToasts } from "@/components/meeting/MeetingToasts";
-import { MobileTopBar } from "@/components/meeting/MobileTopBar";
 import { RosterPanel } from "@/components/meeting/RosterPanel";
-import { ViewMenu, type ViewMode } from "@/components/meeting/ViewMenu";
+import type { ViewMode } from "@/components/meeting/ViewMenu";
 import { useActiveSpeaker } from "@/hooks/useActiveSpeaker";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMeetingConnection } from "@/hooks/useMeetingConnection";
 import type { LocalMedia } from "@/hooks/useLocalMedia";
+import { useMeetingPipOptional } from "@/lib/meetingPipContext";
+import { readMediaFlags } from "@/lib/mediaState";
 import type { Meeting, Participant } from "@/lib/types";
 import { playChatSound, playHandSound, playJoinSound, primeMeetingSounds } from "@/lib/meetingSounds";
 
@@ -69,6 +70,9 @@ const CHROME_HIDE_MS = 3500;
 export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }: RoomProps) {
   const isHost = participant.role === "host";
   const isMobile = useIsMobile();
+  const pip = useMeetingPipOptional();
+  const setControls = pip?.setControls;
+  const keepAliveRef = pip?.keepAliveRef;
   const [rosterOpen, setRosterOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("speaker");
@@ -80,6 +84,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   const [chromeVisible, setChromeVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNotice, setMobileNotice] = useState<string | null>(null);
+  const [cameraBannerDismissed, setCameraBannerDismissed] = useState(false);
+  const [micBannerDismissed, setMicBannerDismissed] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,11 +115,13 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     endMeetingForAll,
   } = useMeetingConnection(meeting.meeting_code, participant, media.stream, {
     onForceMute: () => {
-      const tracks = media.stream?.getAudioTracks() ?? [];
-      if (tracks.some((track) => track.enabled)) {
-        media.toggleAudio();
-        sendMediaState(false, media.videoEnabled);
-      }
+      void (async () => {
+        const { audioEnabled } = media.getLiveFlags();
+        if (!audioEnabled) return;
+        await media.toggleAudio();
+        const flags = media.getLiveFlags();
+        sendMediaState(flags.audioEnabled, flags.videoEnabled);
+      })();
     },
     onRemoved,
     onMeetingEnded: onEnded,
@@ -189,13 +197,27 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     setPortalReady(true);
   }, []);
 
+  const {
+    audioEnabled: liveAudio,
+    videoEnabled: liveVideo,
+    hasAudioTrack,
+    hasVideoTrack,
+  } = readMediaFlags(media);
+  const canControlMedia = media.permission === "granted" || media.permission === "skipped";
+  const showMicAccessBanner = !micBannerDismissed && canControlMedia && !hasAudioTrack;
+  const showCameraAccessBanner = !cameraBannerDismissed && canControlMedia && !hasVideoTrack;
+  const mediaFullyBlocked =
+    (media.permission === "denied" || media.permission === "unavailable") &&
+    !hasAudioTrack &&
+    !hasVideoTrack;
+
   const tiles: Tile[] = [
     {
       id: participant.id,
       name: `${participant.display_name}${isMobile ? "" : ` (You${screenStream ? ", sharing" : ""})`}`,
       stream: screenStream ?? media.stream,
-      muted: !media.audioEnabled,
-      videoOff: screenStream ? false : !media.videoEnabled,
+      muted: !liveAudio,
+      videoOff: screenStream ? false : !liveVideo,
       isSelf: true,
       mirror: screenStream ? false : undefined,
       handRaised,
@@ -250,16 +272,19 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     chatOpenRef.current = chatOpen;
   }, [chatOpen]);
 
-  function toggleAudio() {
+  async function toggleAudio() {
     resumeAudio();
-    media.toggleAudio();
-    sendMediaState(!media.audioEnabled, media.videoEnabled);
+    const track = await media.toggleAudio();
+    if (track) await replaceTrack(track, "audio");
+    const { audioEnabled, videoEnabled } = media.getLiveFlags();
+    sendMediaState(audioEnabled, videoEnabled);
   }
 
   async function toggleVideo() {
     const track = await media.toggleVideo();
     await replaceTrack(track, "video");
-    sendMediaState(media.audioEnabled, track !== null);
+    const { audioEnabled, videoEnabled } = media.getLiveFlags();
+    sendMediaState(audioEnabled, videoEnabled);
   }
 
   function toggleHand() {
@@ -284,7 +309,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     screenStreamRef.current = null;
     setScreenStream(null);
     void setVideoOverride(null);
-    sendMediaState(media.audioEnabled, media.videoEnabled);
+    const { audioEnabled, videoEnabled } = media.getLiveFlags();
+    sendMediaState(audioEnabled, videoEnabled);
   }
 
   async function toggleShare() {
@@ -304,7 +330,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
       screenStreamRef.current = display;
       setScreenStream(display);
       await setVideoOverride(track);
-      sendMediaState(media.audioEnabled, true);
+      const { audioEnabled } = media.getLiveFlags();
+      sendMediaState(audioEnabled, true);
     } catch (err) {
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
       setMobileNotice("Could not start screen sharing on this device.");
@@ -317,7 +344,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   useEffect(() => {
     resumeAudio();
     const timer = setTimeout(() => {
-      sendMediaState(media.audioEnabled, media.videoEnabled);
+      const { audioEnabled, videoEnabled } = media.getLiveFlags();
+      sendMediaState(audioEnabled, videoEnabled);
     }, 1000); // slight delay to ensure WS is fully open and roster handshake done
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,8 +362,8 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
       id: participant.id,
       name: participant.display_name,
       role: participant.role,
-      audioEnabled: media.audioEnabled,
-      videoEnabled: media.videoEnabled,
+      audioEnabled: liveAudio,
+      videoEnabled: liveVideo,
       handRaised,
       isSelf: true,
     },
@@ -349,7 +377,43 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
     })),
   ];
 
-  const mediaUnavailable = media.permission !== "granted";
+  const mediaUnavailable = mediaFullyBlocked;
+
+  const onLeftRef = useRef(onLeft);
+  onLeftRef.current = onLeft;
+  const toggleAudioRef = useRef(toggleAudio);
+  toggleAudioRef.current = toggleAudio;
+  const toggleVideoRef = useRef(toggleVideo);
+  toggleVideoRef.current = toggleVideo;
+
+  useEffect(() => {
+    if (!setControls) return;
+    setControls({
+      meetingCode: meeting.meeting_code,
+      displayName: participant.display_name,
+      audioEnabled: liveAudio,
+      videoEnabled: liveVideo,
+      mediaAvailable: canControlMedia,
+      stream: media.stream,
+      toggleAudio: () => void toggleAudioRef.current(),
+      toggleVideo: () => void toggleVideoRef.current(),
+      onLeave: () => onLeftRef.current(),
+    });
+  }, [
+    setControls,
+    meeting.meeting_code,
+    participant.display_name,
+    liveAudio,
+    liveVideo,
+    media.stream,
+    canControlMedia,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (!keepAliveRef?.current) setControls?.(null);
+    };
+  }, [setControls, keepAliveRef]);
 
   const togglePin = useCallback(
     (id: string) => {
@@ -450,28 +514,20 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
   );
 
   return (
-    <div className="flex h-screen flex-col bg-room-bg">
-      {isMobile && <MobileTopBar meeting={meeting} onLeave={onLeft} />}
-
+    <div className="flex h-screen flex-col bg-black">
       {/* Main content area: video stage + side panel side by side */}
       <div className="relative flex min-h-0 flex-1 flex-row overflow-hidden">
-        <main className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-[#0f0f0f] p-2 sm:p-4">
-          {!isMobile && <MeetingInfoPopover meeting={meeting} visible={chromeShown} />}
-
-          {!isMobile && (
-            <div
-              className={`absolute right-3 top-3 z-20 transition-opacity duration-300 ${
-                chromeShown ? "opacity-100" : "pointer-events-none opacity-0"
-              }`}
-            >
-              <ViewMenu
-                mode={viewMode}
-                hideSelf={hideSelf}
-                onMode={setViewMode}
-                onToggleHideSelf={() => setHideSelf((v) => !v)}
-              />
-            </div>
-          )}
+        <main className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-[#2d2d2d] p-0 sm:p-2">
+          <MeetingTopBar
+            meeting={meeting}
+            displayName={participant.display_name}
+            visible={chromeShown}
+            viewMode={viewMode}
+            hideSelf={hideSelf}
+            onViewMode={setViewMode}
+            onToggleHideSelf={() => setHideSelf((v) => !v)}
+            onPopOut={isMobile ? undefined : () => pip?.popOut()}
+          />
 
           {strugglingPeers.length > 0 && (
             <div className="absolute left-1/2 top-4 z-10 flex max-w-[90%] -translate-x-1/2 flex-col items-center gap-2 rounded-lg bg-amber-950/90 px-4 py-3 text-center text-xs text-amber-50 sm:flex-row">
@@ -493,13 +549,83 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
             </div>
           )}
 
-          {mediaUnavailable && (
-            <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 max-w-[90%] rounded-lg bg-black/80 px-4 py-2 text-center text-xs text-white">
-              {media.permission === "skipped"
-                ? "You joined without microphone and camera — others can't see or hear you."
-                : media.permission === "denied"
-                  ? "Microphone and camera access was blocked. Allow access in your browser settings to share audio/video."
-                  : "No microphone or camera found on this device — others can't see or hear you."}
+          {(showMicAccessBanner || showCameraAccessBanner) && (
+            <div className="absolute inset-x-0 top-9 z-[28] flex flex-col items-center gap-2 px-3 pt-2 sm:top-10">
+              {showMicAccessBanner && (
+                <div className="flex w-full max-w-xl items-center gap-2.5 rounded-lg bg-[#2d2d2d] px-4 py-2.5 text-sm text-white shadow-lg">
+                  <TriangleAlert size={16} className="shrink-0 text-amber-400" />
+                  <p className="min-w-0 flex-1 text-[13px] leading-snug">
+                    Please enable access to your{" "}
+                    <button
+                      type="button"
+                      onClick={() => void toggleAudio()}
+                      className="font-medium text-[#4f9cf9] hover:underline"
+                    >
+                      microphone
+                    </button>{" "}
+                    so others can hear you.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setMicBannerDismissed(true)}
+                    className="shrink-0 rounded p-1 text-white/70 hover:bg-white/10"
+                    aria-label="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
+              {showCameraAccessBanner && (
+                <div className="flex w-full max-w-xl items-center gap-2.5 rounded-lg bg-[#2d2d2d] px-4 py-2.5 text-sm text-white shadow-lg">
+                  <TriangleAlert size={16} className="shrink-0 text-amber-400" />
+                  <p className="min-w-0 flex-1 text-[13px] leading-snug">
+                    {hasAudioTrack ? (
+                      <>
+                        Camera access is off.{" "}
+                        <button
+                          type="button"
+                          onClick={() => void toggleVideo()}
+                          className="font-medium text-[#4f9cf9] hover:underline"
+                        >
+                          Turn on camera
+                        </button>{" "}
+                        when ready — your microphone is still on.
+                      </>
+                    ) : (
+                      <>
+                        Please enable access to your{" "}
+                        <button
+                          type="button"
+                          onClick={() => void toggleVideo()}
+                          className="font-medium text-[#4f9cf9] hover:underline"
+                        >
+                          camera
+                        </button>{" "}
+                        for the best experience.
+                      </>
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCameraBannerDismissed(true)}
+                    className="shrink-0 rounded p-1 text-white/70 hover:bg-white/10"
+                    aria-label="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mediaFullyBlocked && (
+            <div className="absolute inset-x-0 top-9 z-[28] flex justify-center px-3 pt-2 sm:top-10">
+              <div className="max-w-xl rounded-lg bg-black/80 px-4 py-2 text-center text-xs text-white">
+                {media.permission === "denied"
+                  ? "Microphone and camera access was blocked. Allow access in your browser settings to share audio or video."
+                  : "No microphone or camera was found on this device."}
+              </div>
             </div>
           )}
 
@@ -573,7 +699,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
         panelOpen &&
         portalReady &&
         createPortal(
-          <div className="fixed inset-0 z-[80] flex flex-col bg-[#1f1f1f]">
+          <div className="fixed inset-0 z-[250] flex flex-col bg-[#1f1f1f]">
             {rosterOpen && (
               <RosterPanel
                 entries={rosterEntries}
@@ -602,9 +728,9 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
         }`}
       >
         <ControlBar
-          audioEnabled={media.audioEnabled}
-          videoEnabled={media.videoEnabled}
-          mediaAvailable={!mediaUnavailable}
+          audioEnabled={liveAudio}
+          videoEnabled={liveVideo}
+          mediaAvailable={canControlMedia}
           participantCount={tileCount}
           sharing={screenStream !== null}
           isHost={isHost}
@@ -615,7 +741,7 @@ export function Room({ meeting, participant, media, onLeft, onEnded, onRemoved }
           videoDevices={media.videoDevices}
           currentAudioId={media.currentAudioId}
           currentVideoId={media.currentVideoId}
-          onToggleAudio={toggleAudio}
+          onToggleAudio={() => void toggleAudio()}
           onToggleVideo={toggleVideo}
           onPickAudio={pickAudio}
           onPickVideo={pickVideo}

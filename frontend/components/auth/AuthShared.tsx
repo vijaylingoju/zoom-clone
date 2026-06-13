@@ -1,10 +1,12 @@
 "use client";
 
 import { Check, Globe, KeyRound, Shield, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { ZoomWordmark } from "@/components/auth/ZoomWordmark";
 import { completeAuth } from "@/lib/auth";
 
 export function AuthTopBanner() {
@@ -36,8 +38,8 @@ export function AuthTopBanner() {
 export function AuthHeader({ showSignInLink = true }: { showSignInLink?: boolean }) {
   return (
     <header className="flex items-center justify-between px-6 py-4">
-      <Link href="/welcome" className="text-xl font-bold lowercase text-zoom-blue">
-        zoom
+      <Link href="/welcome" className="inline-block">
+        <ZoomWordmark size="sm" />
       </Link>
       <div className="flex items-center gap-4 text-sm text-ink-soft">
         {showSignInLink && (
@@ -103,11 +105,21 @@ const FEATURES = [
   "Create up to 5 two-minute video messages",
 ];
 
-export function SignUpSidebar() {
+export function SignUpSidebar({ variant = "birth" }: { variant?: "birth" | "email" }) {
+  const bannerSrc =
+    variant === "email" ? "/auth/banner-signup.png" : "/auth/banner-signin.png";
+
   return (
     <div className="relative hidden min-h-full flex-col bg-[#f7f7f8] px-10 py-12 lg:flex lg:w-[42%]">
       <div className="flex flex-1 flex-col items-center justify-center">
-        <AuthIllustration />
+        <Image
+          src={bannerSrc}
+          alt=""
+          width={360}
+          height={280}
+          className="h-auto w-full max-w-[360px] object-contain"
+          priority
+        />
       </div>
       <div className="rounded-xl border border-black/5 bg-white p-6 shadow-sm">
         <p className="text-lg font-semibold text-ink">Create your free Basic account</p>
@@ -127,52 +139,17 @@ export function SignUpSidebar() {
   );
 }
 
-function AuthIllustration() {
-  return (
-    <svg viewBox="0 0 320 220" className="h-48 w-full max-w-sm" aria-hidden>
-      <rect x="40" y="30" width="240" height="140" rx="12" fill="#1e3a5f" />
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <rect
-          key={i}
-          x={55 + (i % 3) * 70}
-          y={50 + Math.floor(i / 3) * 50}
-          width="50"
-          height="36"
-          rx="4"
-          fill="#2d5a8e"
-        />
-      ))}
-      <circle cx="90" cy="175" r="22" fill="#f9a8d4" />
-      <rect x="78" y="195" width="24" height="30" rx="4" fill="#0e72ed" />
-      <circle cx="230" cy="175" r="22" fill="#86efac" />
-      <rect x="218" y="195" width="24" height="30" rx="4" fill="#334155" />
-      <rect x="200" y="95" width="36" height="28" rx="4" fill="#0e72ed" />
-    </svg>
-  );
-}
-
 export function SignInIllustration() {
   return (
     <div className="hidden min-h-full items-center justify-center bg-[#f7f7f8] px-10 lg:flex lg:w-[50%]">
-      <svg viewBox="0 0 360 260" className="h-56 w-full max-w-md" aria-hidden>
-        <rect x="60" y="40" width="240" height="150" rx="10" fill="#1e3a5f" />
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <rect
-            key={i}
-            x={75 + (i % 3) * 70}
-            y={60 + Math.floor(i / 3) * 55}
-            width="52"
-            height="38"
-            rx="4"
-            fill="#2d5a8e"
-          />
-        ))}
-        <circle cx="120" cy="210" r="24" fill="#f9a8d4" />
-        <rect x="105" y="232" width="30" height="22" rx="4" fill="#0e72ed" />
-        <circle cx="250" cy="210" r="24" fill="#86efac" />
-        <rect x="235" y="232" width="30" height="22" rx="4" fill="#334155" />
-        <rect x="220" y="115" width="40" height="30" rx="4" fill="#0e72ed" />
-      </svg>
+      <Image
+        src="/auth/banner-signin.png"
+        alt=""
+        width={420}
+        height={320}
+        className="h-auto w-full max-w-[420px] object-contain"
+        priority
+      />
     </div>
   );
 }

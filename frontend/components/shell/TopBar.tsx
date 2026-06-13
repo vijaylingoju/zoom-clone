@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { clearAuth } from "@/lib/auth";
 import { formatTime } from "@/lib/format";
+import { useMeetingPipOptional } from "@/lib/meetingPipContext";
 
 function initials(name: string): string {
   return name
@@ -99,6 +100,7 @@ function AvatarMenu({ onClose }: { onClose: () => void }) {
 
 export function TopBar() {
   const { data: user } = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const pip = useMeetingPipOptional();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -110,6 +112,15 @@ export function TopBar() {
       </div>
 
       <div className="flex flex-1 items-center justify-center gap-2 sm:px-6">
+        {pip?.poppedOut && pip.controls && (
+          <button
+            type="button"
+            onClick={() => pip.expand(pip.controls!.meetingCode)}
+            className="hidden shrink-0 rounded-full bg-[#e8f3ff] px-3 py-1 text-xs font-medium text-zoom-blue hover:bg-[#d6eaff] sm:inline"
+          >
+            Return to meeting
+          </button>
+        )}
         <div className="relative hidden items-center gap-1 text-ink-soft sm:flex">
           <span className="rounded p-1 opacity-40">
             <ChevronLeft size={16} />

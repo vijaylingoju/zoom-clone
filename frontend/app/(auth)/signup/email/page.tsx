@@ -34,7 +34,7 @@ function SignUpEmailForm() {
     <div className="flex min-h-screen flex-col">
       <AuthHeader />
       <div className="flex min-h-0 flex-1">
-        <SignUpSidebar />
+        <SignUpSidebar variant="email" />
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
           <div className="w-full max-w-md">
             <h1 className="text-center text-3xl font-bold text-ink">Sign up</h1>

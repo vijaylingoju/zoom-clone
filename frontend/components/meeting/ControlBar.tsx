@@ -172,41 +172,114 @@ export function ControlBar(props: ControlBarProps) {
   if (isMobile) {
     return (
       <>
-        <div ref={barRef} className="relative z-40 flex items-center justify-around bg-black px-6 py-3">
-          <ControlButton
-            label={audioEnabled ? "Mute" : "Unmute"}
-            active={audioEnabled}
-            onClick={onToggleAudio}
-            onIcon={<Mic size={22} />}
-            offIcon={<MicOff size={22} />}
-            disabled={!mediaAvailable}
-            className="w-20"
-          />
-          <ControlButton
-            label="Video"
-            active={videoEnabled}
-            onClick={onToggleVideo}
-            onIcon={<Video size={22} />}
-            offIcon={<VideoOff size={22} />}
-            disabled={!mediaAvailable}
-            className="w-20"
-          />
-          <div className="relative">
+        <div ref={barRef} className="relative z-40 flex items-center justify-between bg-black px-3 py-2">
+          <div className="flex items-center gap-6">
             <ControlButton
-              label="More"
-              active
-              onClick={() => openMenu("mobile-more")}
-              onIcon={<MoreHorizontal size={22} className="rounded-full border border-white/40 p-1" />}
-              offIcon={<MoreHorizontal size={22} className="rounded-full border border-white/40 p-1" />}
-              className="w-20"
+              label={audioEnabled ? "Mute" : "Unmute"}
+              active={audioEnabled}
+              onClick={onToggleAudio}
+              onIcon={<Mic size={22} />}
+              offIcon={<MicOff size={22} />}
+              disabled={!mediaAvailable}
+              className="w-[4.5rem]"
             />
-            {unreadMessages > 0 && (
-              <span className="pointer-events-none absolute right-2 top-0 min-w-[16px] rounded-full bg-red-500 px-1 text-center text-[9px] font-bold leading-4 text-white">
-                {unreadMessages > 99 ? "99+" : unreadMessages}
-              </span>
+            <ControlButton
+              label="Video"
+              active={videoEnabled}
+              onClick={onToggleVideo}
+              onIcon={<Video size={22} />}
+              offIcon={<VideoOff size={22} />}
+              disabled={!mediaAvailable}
+              className="w-[4.5rem]"
+            />
+          </div>
+
+          <div className="flex items-center gap-5">
+            <div className="relative">
+              <ControlButton
+                label="More"
+                active
+                onClick={() => setMenu((cur) => (cur === "mobile-more" ? null : "mobile-more"))}
+                onIcon={<MoreHorizontal size={22} className="rounded-full border border-white/40 p-1" />}
+                offIcon={<MoreHorizontal size={22} className="rounded-full border border-white/40 p-1" />}
+                className="w-[4.5rem]"
+              />
+              {unreadMessages > 0 && (
+                <span className="pointer-events-none absolute right-1 top-0 min-w-[16px] rounded-full bg-red-500 px-1 text-center text-[9px] font-bold leading-4 text-white">
+                  {unreadMessages > 99 ? "99+" : unreadMessages}
+                </span>
+              )}
+            </div>
+
+            {isHost ? (
+              <button
+                type="button"
+                onClick={() => openMenu("end")}
+                className="flex w-[4.5rem] flex-col items-center gap-1 rounded-lg py-2 text-white"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#E02828]">
+                  <X size={14} className="text-white" />
+                </span>
+                <span className="text-[10px]">End</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onLeave}
+                className="flex w-[4.5rem] flex-col items-center gap-1 rounded-lg py-2 text-white"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#E02828]">
+                  <X size={14} className="text-white" />
+                </span>
+                <span className="text-[10px]">End</span>
+              </button>
             )}
           </div>
         </div>
+
+        {menu === "end" &&
+          portalReady &&
+          createPortal(
+            <div className="fixed inset-0 z-[250] flex items-end justify-center bg-black/60" onClick={() => setMenu(null)}>
+              <div
+                className="mb-24 w-[min(100%,20rem)] rounded-xl border border-white/10 bg-[#111] p-2 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {isHost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEndForAll();
+                      setMenu(null);
+                    }}
+                    className="block w-full rounded-lg bg-[#E02828] px-3 py-2.5 text-center text-sm font-medium text-white"
+                  >
+                    End Meeting for All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLeave();
+                    setMenu(null);
+                  }}
+                  className={`block w-full rounded-lg border border-white/15 px-3 py-2.5 text-center text-sm text-white ${
+                    isHost ? "mt-1.5" : ""
+                  }`}
+                >
+                  Leave Meeting
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMenu(null)}
+                  className="mt-1.5 block w-full rounded-lg px-3 py-2.5 text-center text-sm text-white/60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )}
 
         {menu === "mobile-more" &&
           portalReady &&
@@ -230,7 +303,7 @@ export function ControlBar(props: ControlBarProps) {
   }
 
   return (
-    <div ref={barRef} className="relative z-40 flex items-center justify-between bg-room-bg px-4 py-2">
+    <div ref={barRef} className="relative z-40 flex items-center justify-between bg-black px-4 py-2">
       {/* Left: Mic + Video */}
       <div className="flex shrink-0 items-center gap-1 overflow-visible">
         <div className="relative overflow-visible">
@@ -263,7 +336,14 @@ export function ControlBar(props: ControlBarProps) {
             active={videoEnabled}
             onClick={onToggleVideo}
             onIcon={<Video size={20} />}
-            offIcon={<VideoOff size={20} />}
+            offIcon={
+              <span className="relative inline-flex">
+                <VideoOff size={20} />
+                {!videoEnabled && mediaAvailable && (
+                  <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </span>
+            }
             disabled={!mediaAvailable}
             className="w-16"
           />
@@ -370,8 +450,8 @@ export function ControlBar(props: ControlBarProps) {
             label="More"
             active
             onClick={() => openMenu("more")}
-            onIcon={<MoreHorizontal size={20} />}
-            offIcon={<MoreHorizontal size={20} />}
+            onIcon={<MoreHorizontal size={20} className="rounded-full border border-white/40 p-0.5" />}
+            offIcon={<MoreHorizontal size={20} className="rounded-full border border-white/40 p-0.5" />}
             className="w-16"
           />
           {menu === "more" && (
@@ -393,7 +473,7 @@ export function ControlBar(props: ControlBarProps) {
               onClick={() => openMenu("end")}
               className="flex w-16 flex-col items-center gap-1 rounded-lg py-2 text-white transition hover:bg-white/10"
             >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#E02828]">
+              <span className="flex h-5 w-5 items-center justify-center rounded-[4px] bg-[#E02828]">
                 <X size={14} className="text-white" />
               </span>
               <span className="text-[10px] sm:text-[11px]">End</span>

@@ -20,23 +20,23 @@ interface ActionProps {
 function Action({ label, color, icon, onClick, disabled, chevron }: ActionProps) {
   const bg =
     color === "orange"
-      ? "bg-zoom-orange hover:bg-zoom-orange-hover"
-      : "bg-zoom-blue hover:bg-zoom-blue-hover";
+      ? "bg-zoom-orange group-hover:bg-zoom-orange-hover"
+      : "bg-zoom-blue group-hover:bg-zoom-blue-hover";
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="group flex flex-col items-center gap-2">
       <div className="relative">
         <button
           type="button"
           onClick={onClick}
           disabled={disabled}
           aria-label={label}
-          className={`flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-sm transition active:scale-95 disabled:opacity-50 ${bg}`}
+          className={`flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-sm transition-all duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_8px_20px_rgba(0,0,0,0.18)] active:scale-95 disabled:opacity-50 disabled:group-hover:translate-y-0 disabled:group-hover:shadow-sm ${bg}`}
         >
           {icon}
         </button>
         {chevron}
       </div>
-      <span className="flex items-center text-sm text-ink">{label}</span>
+      <span className="flex items-center text-sm text-[#6e7680]">{label}</span>
     </div>
   );
 }
