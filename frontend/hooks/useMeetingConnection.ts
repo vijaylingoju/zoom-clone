@@ -122,6 +122,8 @@ export function useMeetingConnection(
         case "participant-joined": {
           const entry = message.payload as RosterEntry;
           setPeers((prev) => ({ ...prev, [entry.participant_id]: toRemotePeer(entry) }));
+          // Existing peers also negotiate so a lost newcomer offer can still connect.
+          void peerManager.connectTo(entry.participant_id);
           break;
         }
         case "participant-left": {

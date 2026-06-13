@@ -48,18 +48,20 @@ export function VideoTile({
   const mirrored = mirror ?? isSelf;
 
   useEffect(() => {
-    if (videoRef.current && stream) {
+    if (videoRef.current && stream && showVideo) {
       videoRef.current.srcObject = stream;
     }
   }, [stream, showVideo]);
 
-  // Remote audio must keep playing even when the tile shows the avatar —
-  // without a media element attached, the audio track is silent.
+  // Remote audio always uses a dedicated element — video-only tiles were silent.
   useEffect(() => {
-    if (audioRef.current && stream) {
+    if (!isSelf && audioRef.current && stream) {
       audioRef.current.srcObject = stream;
+      void audioRef.current.play().catch(() => {
+        // autoplay may need a prior user gesture; join click usually satisfies this
+      });
     }
-  }, [stream, showVideo]);
+  }, [stream, isSelf]);
 
   return (
     <div
@@ -67,17 +69,17 @@ export function VideoTile({
         compact ? "h-full min-h-[140px] rounded-lg" : "aspect-video rounded-xl"
       } ${active ? "zc-active-speaker ring-[#23D959]" : "ring-transparent"}`}
     >
+      {!isSelf && stream && <audio ref={audioRef} autoPlay playsInline className="sr-only" />}
       {showVideo ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isSelf}
+          muted
           className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""}`}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          {!isSelf && stream && <audio ref={audioRef} autoPlay />}
           {compact ? (
             <span className="font-serif text-2xl text-white">{name.split(" ")[0]}</span>
           ) : (

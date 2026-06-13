@@ -1,4 +1,4 @@
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+import { ICE_SERVERS } from "./iceServers";
 
 export interface PeerManagerEvents {
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
@@ -93,8 +93,10 @@ export class PeerManager {
         this.send("answer", from, peer.pc.localDescription?.toJSON());
       }
     } else if (type === "ice-candidate") {
+      const candidate = payload as RTCIceCandidateInit | null;
+      if (!candidate) return;
       try {
-        await peer.pc.addIceCandidate((payload as RTCIceCandidateInit) ?? undefined);
+        await peer.pc.addIceCandidate(candidate);
       } catch (err) {
         if (!peer.ignoreOffer) throw err;
       }
@@ -138,14 +140,18 @@ export class PeerManager {
 
     pc.onnegotiationneeded = () => void this.makeOffer(peerId, peer);
     pc.onicecandidate = (event) => {
-      this.send("ice-candidate", peerId, event.candidate?.toJSON() ?? null);
+      if (event.candidate) {
+        this.send("ice-candidate", peerId, event.candidate.toJSON());
+      }
     };
     pc.ontrack = (event) => {
       const stream = event.streams[0] ?? new MediaStream([event.track]);
       this.events.onRemoteStream(peerId, stream);
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      if (pc.connectionState === "failed") {
+        void pc.restartIce();
+      } else if (pc.connectionState === "closed") {
         this.events.onPeerConnectionLost(peerId);
       }
     };
