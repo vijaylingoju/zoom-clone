@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { resumeRemoteAudio } from "@/lib/remoteAudio";
+
 export interface SpeakerSource {
   id: string;
   stream: MediaStream | null;
@@ -11,7 +13,7 @@ export interface SpeakerSource {
 const SPEAKING_THRESHOLD = 0.01;
 const POLL_MS = 300;
 
-import { resumeRemoteAudio } from "@/lib/remoteAudio";
+/**
  * Active-speaker highlight via inbound RTP stats — does not tap MediaStreams,
  * so HTML audio elements can play remote audio without being hijacked.
  */
